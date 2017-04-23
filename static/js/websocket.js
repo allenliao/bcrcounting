@@ -8,6 +8,7 @@ $(document).ready(function () {
         var data = JSON.parse(event.data);
         console.log(data);
         switch (data.Type) {
+            /*
         case 0: // JOIN
             if (data.User == $('#uname').text()) {
                 $("#chatbox li").first().before("<li>You joined the chat room.</li>");
@@ -19,6 +20,10 @@ $(document).ready(function () {
             $("#chatbox li").first().before("<li>" + data.User + " left the chat room.</li>");
             break;
         case 2: // MESSAGE
+            $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + data.Content + "</li>");
+            break;
+            */
+        case 4: // RESULT
             $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + data.Content + "</li>");
             break;
         }

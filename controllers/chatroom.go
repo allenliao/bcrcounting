@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"bcrcounting/models"
+	"fmt"
 )
 
 type Subscription struct {
@@ -58,6 +59,7 @@ type CountingResult struct {
 	SuggestionBet       string
 	SuggestionBetAmount int16
 	Result              string
+	GuessResult         bool
 }
 
 type BetSuggestion struct {
@@ -83,10 +85,18 @@ var (
 func chatroom() {
 	for {
 		select {
-
 		case _countingResult := <-countingResult:
-			msg := "第 " + string(_countingResult.TableNo) + " 桌下一局買 " + _countingResult.SuggestionBet
-			publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
+			if _countingResult.Result != "" {
+				var guessResultStr string
+				if _countingResult.GuessResult {
+					guessResultStr = "勝"
+				}
+				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
+				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
+			} else {
+				msg := "第 " + string(_countingResult.TableNo) + " 桌下一局買 " + _countingResult.SuggestionBet
+				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
+			}
 
 		case sub := <-subscribe:
 			if !isUserExist(subscribers, sub.Name) {

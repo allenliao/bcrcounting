@@ -52,21 +52,7 @@ type Subscriber struct {
 	Conn *websocket.Conn // Only for WebSocket users; otherwise nil.
 }
 
-type CountingResult struct {
-	BU                  string
-	TableNo             uint8
-	BetSuggestionData   *[]BetSuggestion
-	SuggestionBet       string
-	SuggestionBetAmount int16
-	Result              string
-	GuessResult         bool
-}
 
-type BetSuggestion struct {
-	BetType     string
-	Probability float32
-	SuggestBet  bool
-}
 
 var (
 	countingResult = make(chan CountingResult, 10)

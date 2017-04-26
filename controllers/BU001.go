@@ -36,28 +36,8 @@ type TableInitJsonStr struct {
 	JsonStr   []byte // Only for WebSocket users; otherwise nil.
 }
 
-type CountingResult struct {
-	GameIDDisplay       string
-	BU                  string
-	TableNo             uint8
-	BetSuggestionData   *[]BetSuggestion
-	SuggestionBet       string
-	SuggestionBetAmount int16
-	Result              string
-	GuessResult         bool
-}
-
-type BetSuggestion struct {
-	BetType     string
-	Probability float32
-	SuggestBet  bool
-}
-
 var (
-	BUCode                string         = "BU001"
-	tableResultChan                      = make(chan TableInitJsonStr, 10) //TODO 用ARR 存
-	currentCountingResult CountingResult                                   //TODO 用ARR 存
-
+	tableResult = make(chan TableInitJsonStr, 10)
 )
 
 func init() {
@@ -79,34 +59,26 @@ func StartProcess() {
 //計算結果
 func processData() {
 	for {
-		if _tableResult, ok := <-tableResultChan; ok {
+		if _tableResult, ok := <-tableResult; ok {
 
 			jsonObj, err := simplejson.NewJson(_tableResult.JsonStr)
 			goutils.CheckErr(err)
 			shoeID, _ := jsonObj.Get("DCGameVO").Get("shoeID").Int()
 			gameIDDisplay, _ := jsonObj.Get("DCGameVO").Get("gameIDDisplay").String()
-			tableCodeSimple, _ := jsonObj.Get("DCGameVO").Get("tableCodeSimple").String()
-
 			millisecond := fmt.Sprint((time.Now().UnixNano()))
 			beego.Info("processData time.Millisecond:" + millisecond)
 			beego.Info("shoeID:" + fmt.Sprint(shoeID) + " gameIDDisplay:" + gameIDDisplay)
 
-			if currentCountingResult.GameIDDisplay != "" {
-				//第一局不計算
-				currentCountingResult = CountingResult{
-					GameIDDisplay:       gameIDDisplay,
-					BU:                  BUCode,
-					TableNo:             tableCodeSimple,
-					BetSuggestionData:   &betSuggestionData,
-					SuggestionBet:       "莊",
-					SuggestionBetAmount: 100,
-					Result:              "莊",
-					GuessResult:         true}
-			}
-
 			//TODO 實作處理結果後回傳
 			betSuggestionData := make([]BetSuggestion, 5)
-
+			countingResult := CountingResult{
+				BU:                  "BU001",
+				TableNo:             3,
+				BetSuggestionData:   &betSuggestionData,
+				SuggestionBet:       "莊",
+				SuggestionBetAmount: 100,
+				Result:              "莊",
+				GuessResult:         true}
 			PublishCountingResult(countingResult) //決定告知結果
 		}
 	}
@@ -135,6 +107,6 @@ func connectTable(tableCode string) {
 	goutils.CheckErr(err)
 	//beego.Info("body:" + string(body))
 
-	tableResultChan <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
+	tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
 
 }

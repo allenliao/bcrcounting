@@ -40,7 +40,7 @@ func Join(user string, ws *websocket.Conn) {
 
 //發佈計算的結果
 func PublishCountingResult(_countingResult CountingResult) {
-	countingResult <- _countingResult
+	countingResultChan <- _countingResult
 }
 
 func Leave(user string) {
@@ -52,24 +52,8 @@ type Subscriber struct {
 	Conn *websocket.Conn // Only for WebSocket users; otherwise nil.
 }
 
-type CountingResult struct {
-	BU                  string
-	TableNo             uint8
-	BetSuggestionData   *[]BetSuggestion
-	SuggestionBet       string
-	SuggestionBetAmount int16
-	Result              string
-	GuessResult         bool
-}
-
-type BetSuggestion struct {
-	BetType     string
-	Probability float32
-	SuggestBet  bool
-}
-
 var (
-	countingResult = make(chan CountingResult, 10)
+	countingResultChan = make(chan CountingResult, 10)
 	// Channel for new join users.
 	subscribe = make(chan Subscriber, 10)
 	// Channel for exit users.
@@ -85,7 +69,7 @@ var (
 func chatroom() {
 	for {
 		select {
-		case _countingResult := <-countingResult:
+		case _countingResult := <-countingResultChan:
 			if _countingResult.Result != "" {
 				var guessResultStr string
 				if _countingResult.GuessResult {

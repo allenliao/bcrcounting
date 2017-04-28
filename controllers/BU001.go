@@ -65,23 +65,6 @@ var (
 	//A~9
 )
 
-type CountingResult struct {
-	BUCode              string
-	GameIDDisplay       string
-	TableNo             uint8
-	BetSuggestionData   [2]BetSuggestion
-	SuggestionBet       string
-	SuggestionBetAmount int16
-	Result              string
-	GuessResult         bool
-}
-
-type BetSuggestion struct {
-	Bet            string
-	WinProbability float32 //要大於0才有搞頭
-	SuggestBet     bool
-}
-
 //處理資料
 //儲存結果
 //計算結果

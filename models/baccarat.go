@@ -14,15 +14,17 @@
 
 package models
 
-type BetType int
+type BetType uint8
 
 const (
-	EVENT_BANKER = iota
-	EVENT_PLAYER
-	EVENT_TIE
-	EVENT_BIG
-	EVENT_SMALL
+	BETTYPE_BANKER = iota
+	BETTYPE_PLAYER
+	BETTYPE_TIE
+	BETTYPE_BIG
+	BETTYPE_SMALL
 )
+
+var BetTypeCount uint8 = 5
 
 type CountingResult struct {
 	BUCode              string           //BU 代碼

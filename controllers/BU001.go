@@ -27,8 +27,19 @@ import (
 
 	"fmt"
 
+	"bcrcounting/models"
+
 	"github.com/astaxie/beego"
 	"github.com/bitly/go-simplejson"
+)
+
+var (
+	BUCode                string
+	tableResult           chan TableInitJsonStr
+	currentCountingResult models.CountingResult
+	//TODO 要準備一個 [TableCode]來放 當下這一局的 結果
+	//playerCardEffectLoseProbability [9]float32 = [9]float32{-0.0018, -0.0045, -0.0054, -0.0120, 0.0084, 0.0113, 0.0082, 0.0053, 0.0025}
+	//A~9
 )
 
 type TableInitJsonStr struct {
@@ -37,23 +48,29 @@ type TableInitJsonStr struct {
 }
 
 func init() {
-	/*
-		// Initialize language type list.
-
-	*/
+	initDefaultValue()
 	StartProcess()
 
 }
 
-func StartProcess() {
-	go processData()
-	go fetchTableData()
-}
+//初始化變數
+func initDefaultValue() {
+	BUCode = "BU001"
+	tableResult = make(chan TableInitJsonStr, 10)
 
-var (
-	BUCode                string         = "BU001"
-	tableResult                          = make(chan TableInitJsonStr, 10)
-	currentCountingResult CountingResult = CountingResult{
+	betSuggestionData := make([]BetSuggestion, 3)
+
+	currentCountingResult = CountingResult{
+		BU:                  BUCode,
+		TableNo:             3,
+		BetSuggestionData:   &betSuggestionData,
+		SuggestionBet:       "",
+		SuggestionBetAmount: 100,
+		Result:              "",
+		GuessResult:         true}
+	//PublishCountingResult(countingResult) //決定告知結果
+
+	currentCountingResult = CountingResult{
 		BUCode:              "BU001",
 		TableNo:             3,
 		BetSuggestionData:   [2]BetSuggestion{BetSuggestion{Bet: "莊", WinProbability: -0.0105791, SuggestBet: false}, BetSuggestion{Bet: "閒", WinProbability: -0.0123508, SuggestBet: false}},
@@ -61,9 +78,12 @@ var (
 		SuggestionBetAmount: 100,
 		Result:              "莊",
 		GuessResult:         true}
-	playerCardEffectLoseProbability [9]float32 = [9]float32{-0.0018, -0.0045, -0.0054, -0.0120, 0.0084, 0.0113, 0.0082, 0.0053, 0.0025}
-	//A~9
-)
+
+}
+func StartProcess() {
+	go processData()
+	go fetchTableData()
+}
 
 //處理資料
 //儲存結果
@@ -78,7 +98,8 @@ func processData() {
 			gameIDDisplay, _ := jsonObj.Get("DCGameVO").Get("gameIDDisplay").String()
 			gameStatus, _ := jsonObj.Get("gameStatus").String()
 			beego.Info("shoeID:" + fmt.Sprint(shoeID) + " gameIDDisplay:" + gameIDDisplay)
-			//1=init 2=bet 3=dealing 4=resulting 5=end
+
+			//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
 			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == "4" {
 				//紀錄、回寫結果
 				//logHistory()
@@ -105,19 +126,20 @@ func logHistory() {
 	//currentCountingResult.Result=
 }
 
+//取得 BU001 TABLE 的 資料 (目前只先拿第二桌)
 func fetchTableData() {
 	timestamp := time.Now().Local()
-	var duration time.Duration = 1 //1 秒一次
+	var duration time.Duration = 1 //1 秒取一次
 	for _ = range time.Tick(duration * time.Second) {
-
-		str := "Polling remote terminal data at <some remote terminal name> at " + timestamp.String()
+		tableCode := "0001002"
+		str := "fetchTableData table:" + tableCode + "> at " + timestamp.String()
 		fmt.Println(str)
 
-		connectTable("0001002")
+		connectTable(tableCode)
 	}
-
 }
 
+//取得 BU001 TABLE 的 資料
 func connectTable(tableCode string) {
 
 	millisecond := fmt.Sprint((time.Now().UnixNano()))

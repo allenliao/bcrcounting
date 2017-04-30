@@ -8,6 +8,7 @@ const (
 	Bcr_BETTYPE_TIE
 	Bcr_BETTYPE_BIG
 	Bcr_BETTYPE_SMALL
+	Bcr_BETTYPE_NONE
 )
 
 var (
@@ -25,23 +26,38 @@ var (
 var BetTypeCount uint8 = 5
 
 type CountingResult struct {
-	BUCode              string           //BU 代碼
-	GameIDDisplay       string           //局號
-	TableNo             uint8            //桌號
-	BetSuggestionData   [3]BetSuggestion //建議值
-	SuggestionBet       string
-	SuggestionBetAmount int16
-	Result              string
-	GuessResult         bool
+	BUCode              string                 //BU 代碼
+	GameIDDisplay       string                 //局號
+	TableNo             uint8                  //桌號
+	BetSuggestionMap    map[int]*BetSuggestion //計算建議用的參考統計值
+	SuggestionBet       string                 //建議下一局注別
+	SuggestionBetAmount int16                  //建議下一局下注金額
+	Result              string                 //發牌結果
+	GuessResult         bool                   //猜測的結果
+	HasInit             bool                   //初始化算牌數據的 旗標
 }
 
 type BetSuggestion struct {
-	BetType    uint8
-	HouseEdge  float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)
-	SuggestBet bool
+	BetType      uint8
+	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)
+	IsSuggestBet bool
 }
 
-func transBetTypeToStr(betType uint8) string {
+func (currentCountingResult *CountingResult) ClearGuessResult() {
+	currentCountingResult.SuggestionBet = ""
+	currentCountingResult.Result = ""
+	currentCountingResult.GuessResult = false
+}
+
+func (currentCountingResult *CountingResult) InitCountingData() {
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = Bcr_BankerHouseEdgeDefault
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].IsSuggestBet = false
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = Bcr_PlayerHouseEdgeDefault
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].IsSuggestBet = false
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge = Bcr_TieHouseEdgeDefault
+	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].IsSuggestBet = false
+}
+func TransBetTypeToStr(betType uint8) string {
 	switch betType {
 	case Bcr_BETTYPE_BANKER:
 		return "莊"

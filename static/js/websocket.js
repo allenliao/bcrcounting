@@ -23,7 +23,10 @@ $(document).ready(function () {
             $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + data.Content + "</li>");
             break;
             */
-        case 4: // RESULT
+        case 3: // EVENT_SUGGESTION
+            $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + data.Content + "</li>");
+            break;
+         case 4: // RESULT
             $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + data.Content + "</li>");
             break;
         }

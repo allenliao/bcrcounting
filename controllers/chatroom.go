@@ -39,7 +39,7 @@ func Join(user string, ws *websocket.Conn) {
 }
 
 //發佈計算的結果
-func PublishCountingResult(_countingResult CountingResult) {
+func PublishCountingResult(_countingResult models.CountingResult) {
 	countingResult <- _countingResult
 }
 
@@ -52,10 +52,8 @@ type Subscriber struct {
 	Conn *websocket.Conn // Only for WebSocket users; otherwise nil.
 }
 
-
-
 var (
-	countingResult = make(chan CountingResult, 10)
+	countingResult = make(chan models.CountingResult, 10)
 	// Channel for new join users.
 	subscribe = make(chan Subscriber, 10)
 	// Channel for exit users.
@@ -72,15 +70,21 @@ func chatroom() {
 	for {
 		select {
 		case _countingResult := <-countingResult:
+			//該局有提供建議時才會填這一局的 Result
 			if _countingResult.Result != "" {
 				var guessResultStr string
 				if _countingResult.GuessResult {
 					guessResultStr = "勝"
+				} else {
+					guessResultStr = "負"
 				}
 				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
 				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
-			} else {
-				msg := "第 " + string(_countingResult.TableNo) + " 桌下一局買 " + _countingResult.SuggestionBet
+			}
+
+			//提供建議
+			if _countingResult.SuggestionBet != "" {
+				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 下一局建議買 " + _countingResult.SuggestionBet
 				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
 			}
 
@@ -125,6 +129,7 @@ func chatroom() {
 }
 
 func init() {
+	InitBU()
 	go chatroom()
 }
 

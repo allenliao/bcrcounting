@@ -44,7 +44,7 @@ func initDefaultValue() {
 	BUCode = "BU001"
 	tableResult = make(chan TableInitJsonStr, 10)
 
-	currentCountingResult = countingmethod.CreateCountingResult(BUCode, 2)
+	currentCountingResult = countingmethod.CreateCountingResult(BUCode, 5)
 
 }
 
@@ -98,9 +98,10 @@ func processData() {
 				//換靴 重算
 				currentCountingResult.InitCountingData()
 			}
-			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 5 {
+			beego.Info("gameIDDisplay:" + gameIDDisplay + " currentCountingResult.GameIDDisplay:" + currentCountingResult.GameIDDisplay)
+			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 {
 				currentCountingResult.HasInit = false
-
+				currentCountingResult.GameIDDisplay = gameIDDisplay //算過了
 				//若上一局有預測結果，要告知這一局的發牌結果
 				if currentCountingResult.SuggestionBet != "" {
 					for _, resultObj := range arrayOfGameResult {
@@ -156,7 +157,6 @@ func processData() {
 					//有預測結果了
 					PublishCountingResult(currentCountingResult) //決定告知預測
 				}
-				currentCountingResult.GameIDDisplay = gameIDDisplay //算過了
 
 			}
 
@@ -169,7 +169,7 @@ func fetchTableData() {
 	timestamp := time.Now().Local()
 	var duration time.Duration = 1 //1 秒取一次
 	for _ = range time.Tick(duration * time.Second) {
-		tableCode := "0001002"
+		tableCode := "0001005"
 		str := "fetchTableData table:" + tableCode + "> at " + timestamp.String()
 		fmt.Println(str)
 

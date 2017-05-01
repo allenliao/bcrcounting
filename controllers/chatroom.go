@@ -78,14 +78,15 @@ func chatroom() {
 				} else {
 					guessResultStr = "負"
 				}
-				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
+				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
 				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
-			}
+			} else {
+				//提供建議
+				if _countingResult.SuggestionBet != "" {
+					msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 下一局建議買 " + _countingResult.SuggestionBet
+					publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
+				}
 
-			//提供建議
-			if _countingResult.SuggestionBet != "" {
-				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 下一局建議買 " + _countingResult.SuggestionBet
-				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
 			}
 
 		case sub := <-subscribe:
@@ -129,7 +130,7 @@ func chatroom() {
 }
 
 func init() {
-	InitBU()
+
 	go chatroom()
 }
 

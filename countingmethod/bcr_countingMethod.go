@@ -83,10 +83,12 @@ func Bcr_CountingMethod1(cardList [6]int, currentCountingResult *models.Counting
 		currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_BANKER].HouseEdge += models.Bcr_BankerHouseEdgeEffectList[point]
 		currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_TIE].HouseEdge += models.Bcr_TieHouseEdgeEffectList[point]
 	}
-
-	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_PLAYER].HouseEdge = -5
-	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_BANKER].HouseEdge = 2
-	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_TIE].HouseEdge = -1
+	/*
+	   //for test
+	   	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_PLAYER].HouseEdge = -5
+	   	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_BANKER].HouseEdge = 2
+	   	currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_TIE].HouseEdge = -1
+	*/
 
 	//HouseEdge排序算出結果(越大越好)
 	sort.Sort(betSuggestionSliceForSort)

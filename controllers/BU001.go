@@ -21,13 +21,18 @@ import (
 )
 
 var (
-	BUCode                string
-	tableResult           chan TableInitJsonStr
-	currentCountingResult models.CountingResult
-	//TODO 要準備一個 [TableCode]來放 當下這一局的 結果
-
-	//A~9
+	BUCode       string
+	tableInfoMap map[string]*tableInfo
+	tableAmount  uint8
+	tableResult  chan TableInitJsonStr
+	//currentCountingResult models.CountingResult //TODO 要準備一個 [TableCode]來放 當下這一局的 結果currentCountingResult
 )
+
+type tableInfo struct {
+	TableCode             string
+	TableNo               uint8
+	CurrentCountingResult *models.CountingResult //TODO 要準備一個 [TableCode]來放 當下這一局的 結果currentCountingResult
+}
 
 type TableInitJsonStr struct {
 	TableCode string
@@ -43,14 +48,22 @@ func InitBU() {
 func initDefaultValue() {
 	BUCode = "BU001"
 	tableResult = make(chan TableInitJsonStr, 10)
-
-	currentCountingResult = countingmethod.CreateCountingResult(BUCode, 5)
+	tableInfoMap = make(map[string]*tableInfo)
+	tableCodeList := []string{"0001001", "0001002", "0001003", "0001004", "0001005", "0001006", "0001007", "0001008", "0001009", "0001010", "0001011", "0001012", "0001013", "0001014"}
+	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
+	for idx, tableCode := range tableCodeList {
+		tableNo := tableNoList[idx]
+		currentCountingResult := countingmethod.CreateCountingResult(BUCode, tableNo)
+		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResult: &currentCountingResult}
+	}
 
 }
 
 func StartProcess() {
 	go processData()
-	go fetchTableData()
+	for _, tableInfo := range tableInfoMap {
+		go fetchTableData(tableInfo) //TODO: HARD CODE
+	}
 }
 
 func barcode2point(barcode int) int {
@@ -82,7 +95,7 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 func processData() {
 	for {
 		if _tableResult, ok := <-tableResult; ok {
-
+			tableCode := _tableResult.TableCode
 			jsonObj, err := simplejson.NewJson(_tableResult.JsonStr)
 			goutils.CheckErr(err)
 			shoeID, _ := jsonObj.Get("DCGameVO").Get("shoeID").Int()
@@ -92,6 +105,7 @@ func processData() {
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
 			beego.Info("shoeID:" + fmt.Sprint(shoeID) + " gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
 
+			currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
 			//beego.Info(string(_tableResult.JsonStr))
 			//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
 			if handCount == 1 && !currentCountingResult.HasInit {
@@ -152,7 +166,7 @@ func processData() {
 					cardList[idx] = barcode2point(barcode)
 				}
 
-				suggestionResult := countingmethod.Bcr_CountingMethod1(cardList, &currentCountingResult)
+				suggestionResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
 				if suggestionResult != nil {
 					//有預測結果了
 					PublishCountingResult(currentCountingResult) //決定告知預測
@@ -164,13 +178,14 @@ func processData() {
 	}
 }
 
-//取得 BU001 TABLE 的 資料 (目前只先拿第二桌)
-func fetchTableData() {
+//取得 BU001 TABLE 的 資料  tableCode := "0001005"
+func fetchTableData(_tableInfo *tableInfo) {
+	tableCode := _tableInfo.TableCode
 	timestamp := time.Now().Local()
 	var duration time.Duration = 1 //1 秒取一次
 	for _ = range time.Tick(duration * time.Second) {
-		tableCode := "0001005"
-		str := "fetchTableData table:" + tableCode + "> at " + timestamp.String()
+
+		str := "fetchTableData TableCode:" + tableCode + " => at " + timestamp.String()
 		fmt.Println(str)
 
 		connectTable(tableCode)
@@ -181,7 +196,7 @@ func fetchTableData() {
 func connectTable(tableCode string) {
 
 	millisecond := fmt.Sprint((time.Now().UnixNano()))
-	beego.Info("connectTable time.Millisecond:" + millisecond)
+	beego.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
 	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)

@@ -39,7 +39,7 @@ func Join(user string, ws *websocket.Conn) {
 }
 
 //發佈計算的結果
-func PublishCountingResult(_countingResult models.CountingResult) {
+func PublishCountingResult(_countingResult *models.CountingResult) {
 	countingResult <- _countingResult
 }
 
@@ -53,7 +53,7 @@ type Subscriber struct {
 }
 
 var (
-	countingResult = make(chan models.CountingResult, 10)
+	countingResult = make(chan *models.CountingResult, 10)
 	// Channel for new join users.
 	subscribe = make(chan Subscriber, 10)
 	// Channel for exit users.

@@ -98,12 +98,11 @@ func processData() {
 			tableCode := _tableResult.TableCode
 			jsonObj, err := simplejson.NewJson(_tableResult.JsonStr)
 			goutils.CheckErr(err)
-			shoeID, _ := jsonObj.Get("DCGameVO").Get("shoeID").Int()
+			//shoeID, _ := jsonObj.Get("DCGameVO").Get("shoeID").Int()
 			gameIDDisplay, _ := jsonObj.Get("DCGameVO").Get("gameIDDisplay").String()
 			handCount, _ := jsonObj.Get("DCGameVO").Get("handCount").Int()
 			gameStatus, _ := jsonObj.Get("gameStatus").Int()
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
-			beego.Info("shoeID:" + fmt.Sprint(shoeID) + " gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
 
 			currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
 			//beego.Info(string(_tableResult.JsonStr))
@@ -112,8 +111,9 @@ func processData() {
 				//換靴 重算
 				currentCountingResult.InitCountingData()
 			}
-			beego.Info("gameIDDisplay:" + gameIDDisplay + " currentCountingResult.GameIDDisplay:" + currentCountingResult.GameIDDisplay)
-			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 {
+
+			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
+				beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
 				currentCountingResult.HasInit = false
 				currentCountingResult.GameIDDisplay = gameIDDisplay //算過了
 				//若上一局有預測結果，要告知這一局的發牌結果
@@ -124,21 +124,22 @@ func processData() {
 						betTypeStr := fmt.Sprint(resultMap["betType"])
 
 						betType := jsonGameResult2BetType(resultStr, betTypeStr)
-						beego.Info("arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
+						beego.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
 						if betType != models.Bcr_BETTYPE_NONE {
 							//取得結果
 							currentCountingResult.Result = models.TransBetTypeToStr(betType)
 							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
+
 							break
 						}
 
 					}
 
-					//currentCountingResult.Result=
+					beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 					PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
 					//清除預測結果
-					currentCountingResult.ClearGuessResult()
+					//currentCountingResult.ClearGuessResult()
 
 				}
 
@@ -169,6 +170,7 @@ func processData() {
 				suggestionResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
 				if suggestionResult != nil {
 					//有預測結果了
+					beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
 					PublishCountingResult(currentCountingResult) //決定告知預測
 				}
 
@@ -181,12 +183,14 @@ func processData() {
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"
 func fetchTableData(_tableInfo *tableInfo) {
 	tableCode := _tableInfo.TableCode
-	timestamp := time.Now().Local()
+
 	var duration time.Duration = 1 //1 秒取一次
 	for _ = range time.Tick(duration * time.Second) {
-
-		str := "fetchTableData TableCode:" + tableCode + " => at " + timestamp.String()
-		fmt.Println(str)
+		/*
+			timestamp := time.Now().Local()
+			str := "fetchTableData TableCode:" + tableCode + " => at " + timestamp.String()
+			fmt.Println(str)
+		*/
 
 		connectTable(tableCode)
 	}
@@ -196,7 +200,7 @@ func fetchTableData(_tableInfo *tableInfo) {
 func connectTable(tableCode string) {
 
 	millisecond := fmt.Sprint((time.Now().UnixNano()))
-	beego.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
+	//beego.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
 	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)

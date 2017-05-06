@@ -80,10 +80,14 @@ func chatroom() {
 				}
 				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
 				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
+
+				//清除預測結果 要在這裡清除，因為是平行處理，不然還沒公不就被清掉了 _countingResult.Result != "" 這條件不會成立
+				_countingResult.ClearGuessResult()
+
 			} else {
 				//提供建議
 				if _countingResult.SuggestionBet != "" {
-					msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 下一局建議買 " + _countingResult.SuggestionBet
+					msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 下一局建議買 " + _countingResult.SuggestionBet
 					publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
 				}
 

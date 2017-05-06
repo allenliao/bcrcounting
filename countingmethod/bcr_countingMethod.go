@@ -98,11 +98,12 @@ func Bcr_CountingMethod1(cardList [6]int, currentCountingResult *models.Counting
 		beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
 	}
 
-	if betSuggestion.HouseEdge > 0 { //擊敗賭場優勢
-		betSuggestion.IsSuggestBet = true
-		currentCountingResult.SuggestionBet = models.TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
-		return betSuggestion
-	}
+	//if betSuggestion.HouseEdge > 0 { //擊敗賭場優勢 //除非有退庸，不然不可能>0
+	//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
+	betSuggestion.IsSuggestBet = true
+	currentCountingResult.SuggestionBet = models.TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
+	return betSuggestion
+	//}
 
 	return nil
 

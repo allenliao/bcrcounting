@@ -30,6 +30,7 @@ type CountingResult struct {
 	GameIDDisplay       string                 //局號
 	TableNo             uint8                  //桌號
 	BetSuggestionMap    map[int]*BetSuggestion //計算建議用的參考統計值
+	SuggestionHandCount int                    //預測的是第幾局
 	SuggestionBet       string                 //建議下一局注別
 	SuggestionBetAmount int16                  //建議下一局下注金額
 	Result              string                 //發牌結果
@@ -39,7 +40,7 @@ type CountingResult struct {
 
 type BetSuggestion struct {
 	BetType      uint8
-	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)
+	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)//半年才會碰到一次
 	IsSuggestBet bool
 }
 
@@ -56,6 +57,7 @@ func (currentCountingResult *CountingResult) InitCountingData() {
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge = Bcr_TieHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].IsSuggestBet = false
+	currentCountingResult.SuggestionHandCount = 0
 }
 func TransBetTypeToStr(betType uint8) string {
 	switch betType {

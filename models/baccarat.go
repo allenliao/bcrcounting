@@ -25,17 +25,56 @@ var (
 
 var BetTypeCount uint8 = 5
 
+/*
 type CountingResult struct {
-	BUCode              string                 //BU 代碼
-	GameIDDisplay       string                 //局號
-	TableNo             uint8                  //桌號
-	BetSuggestionMap    map[int]*BetSuggestion //計算建議用的參考統計值
-	SuggestionHandCount int                    //預測的是第幾局
-	SuggestionBet       string                 //建議下一局注別
-	SuggestionBetAmount int16                  //建議下一局下注金額
-	Result              string                 //發牌結果
-	GuessResult         bool                   //猜測的結果
-	HasInit             bool                   //初始化算牌數據的 旗標
+	BUCode              string //BU 代碼
+	GameIDDisplay       string //局號
+	TableNo             uint8  //桌號
+	SuggestionBet       string //建議下一局注別
+	SuggestionBetAmount int16  //建議下一局下注金額
+	Result              string //發牌結果
+	GuessResult         bool   //猜測的結果
+	HasInit             bool   //初始化算牌數據的 旗標
+}
+*/
+
+type CountingResult struct {
+	BUCode                    string                 //BU 代碼
+	GameIDDisplay             string                 //局號
+	TableNo                   uint8                  //桌號
+	SuggestionBet             string                 //建議下一局注別
+	SuggestionBetAmount       int16                  //建議下一局下注金額
+	Result                    string                 //發牌結果
+	GuessResult               bool                   //猜測的結果
+	HasInit                   bool                   //初始化算牌數據的 旗標
+	BetSuggestionMap          map[int]*BetSuggestion //計算建議用的參考統計值
+	BetSuggestionSliceForSort BetSuggestionSlice     //排序用的
+
+}
+
+/*
+//長龍
+type CountingResultMethod2 struct {
+	CountingResult
+}
+*/
+
+//排序用的
+type BetSuggestionSlice []*BetSuggestion
+
+// Len is part of sort.Interface.
+func (d BetSuggestionSlice) Len() int {
+	return len(d)
+}
+
+// Swap is part of sort.Interface.
+func (d BetSuggestionSlice) Swap(i, j int) {
+	d[i], d[j] = d[j], d[i]
+}
+
+// Less is part of sort.Interface. We use count as the value to sort by
+func (d BetSuggestionSlice) Less(i, j int) bool {
+	return d[i].HouseEdge > d[j].HouseEdge
 }
 
 type BetSuggestion struct {
@@ -57,7 +96,6 @@ func (currentCountingResult *CountingResult) InitCountingData() {
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge = Bcr_TieHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].IsSuggestBet = false
-	currentCountingResult.SuggestionHandCount = 0
 }
 func TransBetTypeToStr(betType uint8) string {
 	switch betType {

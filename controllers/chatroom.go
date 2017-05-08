@@ -38,9 +38,14 @@ func Join(user string, ws *websocket.Conn) {
 	subscribe <- Subscriber{Name: user, Conn: ws} //send value to channel
 }
 
-//發佈計算的結果
+//發佈建議的結果
 func PublishCountingResult(_countingResult *models.CountingResult) {
-	countingResult <- _countingResult
+	countingResultCh <- _countingResult
+}
+
+//發佈建議
+func PublishCountingSuggest(_countingResult *models.CountingResult) {
+	countingSuggestCh <- _countingResult
 }
 
 func Leave(user string) {
@@ -53,7 +58,8 @@ type Subscriber struct {
 }
 
 var (
-	countingResult = make(chan *models.CountingResult, 10)
+	countingResultCh  = make(chan *models.CountingResult, 10)
+	countingSuggestCh = make(chan *models.CountingResult, 10)
 	// Channel for new join users.
 	subscribe = make(chan Subscriber, 10)
 	// Channel for exit users.
@@ -69,30 +75,27 @@ var (
 func chatroom() {
 	for {
 		select {
-		case _countingResult := <-countingResult:
-			//該局有提供建議時才會填這一局的 Result
-			if _countingResult.Result != "" {
-				var guessResultStr string
-				if _countingResult.GuessResult {
-					guessResultStr = "勝"
-				} else {
-					guessResultStr = "負"
-				}
-				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
-				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
 
-				//清除預測結果 要在這裡清除，因為是平行處理，不然還沒公不就被清掉了 _countingResult.Result != "" 這條件不會成立
-				_countingResult.ClearGuessResult()
-
-			} else {
-				//提供建議
-				if _countingResult.SuggestionBet != "" {
-					msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 下一局建議買 " + _countingResult.SuggestionBet
-					publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
-				}
-
+		case _countingSuggest := <-countingSuggestCh:
+			//提供建議
+			if _countingSuggest.SuggestionBet != "" {
+				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + _countingSuggest.SuggestionBet
+				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
+				beego.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
 			}
 
+		case _countingResult := <-countingResultCh:
+			//報告預測結果
+			//該局有提供建議時才會填這一局的 Result
+			var guessResultStr string
+			if _countingResult.GuessResult {
+				guessResultStr = "勝"
+			} else {
+				guessResultStr = "負"
+			}
+			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
+			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
+			beego.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")
 		case sub := <-subscribe:
 			if !isUserExist(subscribers, sub.Name) {
 				subscribers.PushBack(sub) // Add user to the end of list.

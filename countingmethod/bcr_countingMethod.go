@@ -6,32 +6,15 @@ package countingmethod
 import (
 	"bcrcounting/models"
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/astaxie/beego"
 )
 
 var (
-	betSuggestionSliceForSort betSuggestionSlice
+	maxBanker, maxTie, maxPlayer float64 = -1, -1, -1
 )
-
-//排序用的
-type betSuggestionSlice []*models.BetSuggestion
-
-// Len is part of sort.Interface.
-func (d betSuggestionSlice) Len() int {
-	return len(d)
-}
-
-// Swap is part of sort.Interface.
-func (d betSuggestionSlice) Swap(i, j int) {
-	d[i], d[j] = d[j], d[i]
-}
-
-// Less is part of sort.Interface. We use count as the value to sort by
-func (d betSuggestionSlice) Less(i, j int) bool {
-	return d[i].HouseEdge > d[j].HouseEdge
-}
 
 func CreateCountingResult(BUCode string, tableNo uint8) models.CountingResult {
 	var betSuggestionMap = make(map[int]*models.BetSuggestion)
@@ -57,10 +40,10 @@ func CreateCountingResult(BUCode string, tableNo uint8) models.CountingResult {
 		Result:              "",
 		GuessResult:         false}
 
-	betSuggestionSliceForSort = make(betSuggestionSlice, 0, len(betSuggestionMap))
+	currentCountingResult.BetSuggestionSliceForSort = make(models.BetSuggestionSlice, 0, len(betSuggestionMap))
 
 	for _, betSuggestion_adr := range betSuggestionMap {
-		betSuggestionSliceForSort = append(betSuggestionSliceForSort, betSuggestion_adr)
+		currentCountingResult.BetSuggestionSliceForSort = append(currentCountingResult.BetSuggestionSliceForSort, betSuggestion_adr)
 	}
 
 	return currentCountingResult
@@ -73,7 +56,7 @@ func resetCountingResult(countingResult models.CountingResult) {
 
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //
-func Bcr_CountingMethod1(cardList [6]int, currentCountingResult *models.CountingResult) *models.BetSuggestion {
+func Bcr_CountingMethod1(cardList [6]int, currentCountingResult *models.CountingResult) bool {
 
 	for _, point := range cardList { //idx, card point
 		if point == -1 {
@@ -91,20 +74,31 @@ func Bcr_CountingMethod1(cardList [6]int, currentCountingResult *models.Counting
 	*/
 
 	//HouseEdge排序算出結果(越大越好)
-	sort.Sort(betSuggestionSliceForSort)
-	betSuggestion := betSuggestionSliceForSort[0] //最大的
+	sort.Sort(currentCountingResult.BetSuggestionSliceForSort)
+	betSuggestion := currentCountingResult.BetSuggestionSliceForSort[0] //最大的
 
-	for idx, betSuggestion := range betSuggestionSliceForSort {
+	maxBanker = math.Max(float64(currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_BANKER].HouseEdge), maxBanker)
+	maxPlayer = math.Max(float64(currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_PLAYER].HouseEdge), maxPlayer)
+	maxTie = math.Max(float64(currentCountingResult.BetSuggestionMap[models.Bcr_BETTYPE_TIE].HouseEdge), maxTie)
+	beego.Info("maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
+	for idx, betSuggestion := range currentCountingResult.BetSuggestionSliceForSort {
 		beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
 	}
 
-	//if betSuggestion.HouseEdge > 0 { //擊敗賭場優勢 //除非有退庸，不然不可能>0
-	//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
-	betSuggestion.IsSuggestBet = true
-	currentCountingResult.SuggestionBet = models.TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
-	return betSuggestion
-	//}
+	if betSuggestion.HouseEdge > 0 { //擊敗賭場優勢 //除非有退庸，不然不可能>0
+		//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
+		betSuggestion.IsSuggestBet = true
+		currentCountingResult.SuggestionBet = models.TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
+		return true
+	}
 
-	return nil
+	return false
 
 }
+
+/*
+//長龍
+func Bcr_CountingMethod_Trand1(cardList [6]int, currentCountingResult *models.CountingResult) *models.BetSuggestion {
+
+}
+*/

@@ -25,7 +25,6 @@ var (
 	tableInfoMap map[string]*tableInfo
 	tableAmount  uint8
 	tableResult  chan TableInitJsonStr
-	//currentCountingResult models.CountingResult //TODO 要準備一個 [TableCode]來放 當下這一局的 結果currentCountingResult
 )
 
 type tableInfo struct {
@@ -115,7 +114,7 @@ func processData() {
 			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
 				beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
 				currentCountingResult.HasInit = false
-				currentCountingResult.GameIDDisplay = gameIDDisplay //算過了
+				currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
 				//若上一局有預測結果，要告知這一局的發牌結果
 				if currentCountingResult.SuggestionBet != "" {
 					for _, resultObj := range arrayOfGameResult {
@@ -138,11 +137,9 @@ func processData() {
 					beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 					PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
-					//清除預測結果
-					//currentCountingResult.ClearGuessResult()
-
 				}
 
+				//Method1
 				//取牌
 				b1, _ := jsonObj.Get("baccaratResultVO").Get("b1").Int()
 				b1 = b1 % 13
@@ -167,12 +164,28 @@ func processData() {
 					cardList[idx] = barcode2point(barcode)
 				}
 
-				suggestionResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
-				if suggestionResult != nil {
+				gotResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
+				if gotResult {
 					//有預測結果了
 					beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
-					PublishCountingResult(currentCountingResult) //決定告知預測
+					PublishCountingSuggest(currentCountingResult) //決定告知預測
+				} else {
+					//這局沒勝算，清除上一期預測結果(已公布過的)
+					currentCountingResult.ClearGuessResult()
 				}
+				/*
+					//Method2
+					//餵大路
+					gotResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
+					if gotResult {
+						//有預測結果了
+						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
+						PublishCountingSuggest(currentCountingResult) //決定告知預測
+					} else {
+						//這局沒勝算，清除上一期預測結果(已公布過的)
+						currentCountingResult.ClearGuessResult()
+					}
+				*/
 
 			}
 
@@ -202,8 +215,14 @@ func connectTable(tableCode string) {
 	millisecond := fmt.Sprint((time.Now().UnixNano()))
 	//beego.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
 	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
+	if err != nil {
+		beego.Error("connectTable Get:"+tableCode+" Error:", err.Error())
+	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
+	}
 	goutils.CheckErr(err)
 	//beego.Info("body:" + string(body))
 

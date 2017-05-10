@@ -28,9 +28,11 @@ var (
 )
 
 type tableInfo struct {
-	TableCode             string
-	TableNo               uint8
-	CurrentCountingResult *models.CountingResult //TODO 要準備一個 [TableCode]來放 當下這一局的 結果currentCountingResult
+	TableCode                 string
+	TableNo                   uint8
+	CurrentCountingResultList *map[string]models.CountingResultInterface //紀錄賽局結果
+	//CurrentCountingResultMethod1 *models.CountingResultMethod1 //紀錄方法1的決策結果
+	//CurrentCountingResultMethod2 *models.CountingResultMethod2 //紀錄方法2的決策結果
 }
 
 type TableInitJsonStr struct {
@@ -43,7 +45,7 @@ func InitBU() {
 	StartProcess()
 }
 
-//初始化變數
+//初始化變數 create Table Info
 func initDefaultValue() {
 	BUCode = "BU001"
 	tableResult = make(chan TableInitJsonStr, 10)
@@ -52,8 +54,8 @@ func initDefaultValue() {
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
 		tableNo := tableNoList[idx]
-		currentCountingResult := countingmethod.CreateCountingResult(BUCode, tableNo)
-		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResult: &currentCountingResult}
+		currentCountingResultList_addr := countingmethod.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
+		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList_addr}
 	}
 
 }
@@ -103,80 +105,73 @@ func processData() {
 			gameStatus, _ := jsonObj.Get("gameStatus").Int()
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
 
-			currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
-			//beego.Info(string(_tableResult.JsonStr))
-			//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
-			if handCount == 1 && !currentCountingResult.HasInit {
-				//換靴 重算
-				currentCountingResult.InitCountingData()
-			}
+			//currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
+			//CurrentCountingResultList *map[string]models.CountingResultInterface //紀錄賽局結果
 
-			if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
-				beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
-				currentCountingResult.HasInit = false
-				currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
-				//若上一局有預測結果，要告知這一局的發牌結果
-				if currentCountingResult.SuggestionBet != "" {
-					for _, resultObj := range arrayOfGameResult {
-						resultMap, _ := resultObj.(map[string]interface{}) //要做斷言檢查才能使用
-						resultStr := fmt.Sprint(resultMap["result"])
-						betTypeStr := fmt.Sprint(resultMap["betType"])
+			for _, currentCountingResult := range tableInfoMap[tableCode].CurrentCountingResultList {
+				//beego.Info(string(_tableResult.JsonStr))
+				//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
+				if handCount == 1 && !currentCountingResult.HasInit {
+					//換靴 重算
+					currentCountingResult.InitCountingData()
+				}
 
-						betType := jsonGameResult2BetType(resultStr, betTypeStr)
-						beego.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
-						if betType != models.Bcr_BETTYPE_NONE {
-							//取得結果
-							currentCountingResult.Result = models.TransBetTypeToStr(betType)
-							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
+				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
+					beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
+					currentCountingResult.HasInit = false
+					currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
+					//若上一局有預測結果，要告知這一局的發牌結果
+					if currentCountingResult.SuggestionBet != "" {
+						for _, resultObj := range arrayOfGameResult {
+							resultMap, _ := resultObj.(map[string]interface{}) //要做斷言檢查才能使用
+							resultStr := fmt.Sprint(resultMap["result"])
+							betTypeStr := fmt.Sprint(resultMap["betType"])
 
-							break
+							betType := jsonGameResult2BetType(resultStr, betTypeStr)
+							beego.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
+							if betType != models.Bcr_BETTYPE_NONE {
+								//取得結果
+								currentCountingResult.Result = models.TransBetTypeToStr(betType)
+								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
+
+								break
+							}
+
 						}
+
+						beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
+						PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
 					}
 
-					beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
-					PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
+					//Method1
+					//取牌
+					b1, _ := jsonObj.Get("baccaratResultVO").Get("b1").Int()
+					b1 = b1 % 13
+					b2, _ := jsonObj.Get("baccaratResultVO").Get("b2").Int()
+					b3, err := jsonObj.Get("baccaratResultVO").Get("b3").Int()
+					if err != nil {
+						b3 = -1
+					}
+					p1, _ := jsonObj.Get("baccaratResultVO").Get("p1").Int()
+					p2, _ := jsonObj.Get("baccaratResultVO").Get("p2").Int()
+					p3, err := jsonObj.Get("baccaratResultVO").Get("p3").Int()
+					if err != nil {
+						p3 = -1
+					}
 
-				}
+					//beego.Info("JsonStr:", string(_tableResult.JsonStr))
 
-				//Method1
-				//取牌
-				b1, _ := jsonObj.Get("baccaratResultVO").Get("b1").Int()
-				b1 = b1 % 13
-				b2, _ := jsonObj.Get("baccaratResultVO").Get("b2").Int()
-				b3, err := jsonObj.Get("baccaratResultVO").Get("b3").Int()
-				if err != nil {
-					b3 = -1
-				}
-				p1, _ := jsonObj.Get("baccaratResultVO").Get("p1").Int()
-				p2, _ := jsonObj.Get("baccaratResultVO").Get("p2").Int()
-				p3, err := jsonObj.Get("baccaratResultVO").Get("p3").Int()
-				if err != nil {
-					p3 = -1
-				}
+					beego.Info("B1~3,P1~3:", b1, b2, b3, p1, p2, p3)
+					//算牌
+					cardList := [6]int{b1, b2, b3, p1, p2, p3}
+					for idx, barcode := range cardList {
+						cardList[idx] = barcode2point(barcode)
+					}
 
-				//beego.Info("JsonStr:", string(_tableResult.JsonStr))
+					//TODO:取路紙
 
-				beego.Info("B1~3,P1~3:", b1, b2, b3, p1, p2, p3)
-				//算牌
-				cardList := [6]int{b1, b2, b3, p1, p2, p3}
-				for idx, barcode := range cardList {
-					cardList[idx] = barcode2point(barcode)
-				}
-
-				gotResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
-				if gotResult {
-					//有預測結果了
-					beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
-					PublishCountingSuggest(currentCountingResult) //決定告知預測
-				} else {
-					//這局沒勝算，清除上一期預測結果(已公布過的)
-					currentCountingResult.ClearGuessResult()
-				}
-				/*
-					//Method2
-					//餵大路
-					gotResult := countingmethod.Bcr_CountingMethod1(cardList, currentCountingResult)
+					gotResult := currentCountingResult.Counting(cardList)
 					if gotResult {
 						//有預測結果了
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
@@ -185,7 +180,7 @@ func processData() {
 						//這局沒勝算，清除上一期預測結果(已公布過的)
 						currentCountingResult.ClearGuessResult()
 					}
-				*/
+				}
 
 			}
 
@@ -217,13 +212,17 @@ func connectTable(tableCode string) {
 	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
 	if err != nil {
 		beego.Error("connectTable Get:"+tableCode+" Error:", err.Error())
+	} else {
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
+		} else {
+
+		}
+		goutils.CheckErr(err)
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
-	}
-	goutils.CheckErr(err)
+
 	//beego.Info("body:" + string(body))
 
 	tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去

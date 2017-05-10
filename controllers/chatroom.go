@@ -38,7 +38,7 @@ func Join(user string, ws *websocket.Conn) {
 	subscribe <- Subscriber{Name: user, Conn: ws} //send value to channel
 }
 
-//發佈建議的結果
+//發佈建議的結果(公布答案)
 func PublishCountingResult(_countingResult *models.CountingResult) {
 	countingResultCh <- _countingResult
 }

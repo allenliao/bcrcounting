@@ -39,6 +39,7 @@ type CountingResultInterface interface {
 	CreateCountingResult(BUCode string, tableNo uint8)
 	ClearGuessResult()
 	InitCountingData()
+	GetCountingResult() *CountingResult
 }
 
 type CountingResult struct {
@@ -52,6 +53,10 @@ type CountingResult struct {
 	HasInit             bool   //初始化算牌數據的 旗標
 }
 
+func (countingResult *CountingResult) GetCountingResult() *CountingResult {
+	return countingResult
+}
+
 //用卡牌計算賭場優勢
 type CountingResultMethod1 struct {
 	CountingResult
@@ -60,7 +65,7 @@ type CountingResultMethod1 struct {
 
 }
 
-func (currentCountingResult CountingResultMethod1) CreateCountingResult(BUCode string, tableNo uint8) {
+func (currentCountingResult *CountingResultMethod1) CreateCountingResult(BUCode string, tableNo uint8) {
 	var betSuggestionMap = make(map[int]*BetSuggestion)
 	betSuggestionMap[Bcr_BETTYPE_BANKER] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_BANKER,
@@ -91,7 +96,7 @@ func (currentCountingResult CountingResultMethod1) CreateCountingResult(BUCode s
 
 }
 
-func (currentCountingResult CountingResultMethod1) InitCountingData() {
+func (currentCountingResult *CountingResultMethod1) InitCountingData() {
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = Bcr_BankerHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = Bcr_PlayerHouseEdgeDefault
@@ -101,7 +106,7 @@ func (currentCountingResult CountingResultMethod1) InitCountingData() {
 }
 
 //Type繼承CountingResult的 model都可以用?
-func (currentCountingResult CountingResultMethod1) ClearGuessResult() {
+func (currentCountingResult *CountingResultMethod1) ClearGuessResult() {
 	currentCountingResult.SuggestionBet = ""
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
@@ -109,7 +114,7 @@ func (currentCountingResult CountingResultMethod1) ClearGuessResult() {
 
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
-func (currentCountingResult CountingResultMethod1) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int) bool {
 
 	for _, point := range cardList { //idx, card point
 		if point == -1 {
@@ -155,7 +160,7 @@ type CountingResultMethod2 struct {
 	CountingResult
 }
 
-func (currentCountingResult CountingResultMethod2) CreateCountingResult(BUCode string, tableNo uint8) {
+func (currentCountingResult *CountingResultMethod2) CreateCountingResult(BUCode string, tableNo uint8) {
 
 	currentCountingResult.BUCode = BUCode
 	currentCountingResult.TableNo = tableNo
@@ -166,16 +171,16 @@ func (currentCountingResult CountingResultMethod2) CreateCountingResult(BUCode s
 
 }
 
-func (currentCountingResult CountingResultMethod2) InitCountingData() {
+func (currentCountingResult *CountingResultMethod2) InitCountingData() {
 }
 
 //Type繼承CountingResult的 model都可以用?
-func (currentCountingResult CountingResultMethod2) ClearGuessResult() {
+func (currentCountingResult *CountingResultMethod2) ClearGuessResult() {
 	currentCountingResult.SuggestionBet = ""
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
 }
-func (currentCountingResult CountingResultMethod2) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int) bool {
 	return false
 }
 

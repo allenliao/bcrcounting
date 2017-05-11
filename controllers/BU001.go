@@ -30,7 +30,7 @@ var (
 type tableInfo struct {
 	TableCode                 string
 	TableNo                   uint8
-	CurrentCountingResultList *map[string]models.CountingResultInterface //紀錄賽局結果
+	CurrentCountingResultList map[string]models.CountingResultInterface //紀錄賽局結果
 	//CurrentCountingResultMethod1 *models.CountingResultMethod1 //紀錄方法1的決策結果
 	//CurrentCountingResultMethod2 *models.CountingResultMethod2 //紀錄方法2的決策結果
 }
@@ -54,8 +54,8 @@ func initDefaultValue() {
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
 		tableNo := tableNoList[idx]
-		currentCountingResultList_addr := countingmethod.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
-		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList_addr}
+		currentCountingResultList := countingmethod.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
+		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList}
 	}
 
 }
@@ -108,7 +108,8 @@ func processData() {
 			//currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
 			//CurrentCountingResultList *map[string]models.CountingResultInterface //紀錄賽局結果
 
-			for _, currentCountingResult := range tableInfoMap[tableCode].CurrentCountingResultList {
+			for _, currentCountingResultInterface := range tableInfoMap[tableCode].CurrentCountingResultList {
+				currentCountingResult := currentCountingResultInterface.GetCountingResult()
 				//beego.Info(string(_tableResult.JsonStr))
 				//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
 				if handCount == 1 && !currentCountingResult.HasInit {

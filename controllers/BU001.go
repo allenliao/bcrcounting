@@ -219,13 +219,12 @@ func connectTable(tableCode string) {
 		if err != nil {
 			beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
 		} else {
+			tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
 
 		}
-		goutils.CheckErr(err)
+		//goutils.CheckErr(err)
 	}
 
 	//beego.Info("body:" + string(body))
-
-	tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
 
 }

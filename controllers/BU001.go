@@ -6,14 +6,12 @@
 package controllers
 
 import (
-	"goutils"
 	"io/ioutil"
 	"net/http"
 	"time"
 
 	"fmt"
 
-	"bcrcounting/countingmethod"
 	"bcrcounting/models"
 
 	"github.com/astaxie/beego"
@@ -54,8 +52,14 @@ func initDefaultValue() {
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
 		tableNo := tableNoList[idx]
-		currentCountingResultList := countingmethod.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
+		currentCountingResultList := models.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
 		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList}
+	}
+
+	for _, currentCountingResultInterface := range tableInfoMap["0001002"].CurrentCountingResultList {
+		currentCountingResult := currentCountingResultInterface.GetCountingResult()
+		beego.Info("initDefaultValue currentCountingResult.BUCode:" + currentCountingResult.BUCode)
+
 	}
 
 }
@@ -95,26 +99,29 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 //計算結果
 func processData() {
 	for {
+		//收到桌面資料後
 		if _tableResult, ok := <-tableResult; ok {
 			tableCode := _tableResult.TableCode
 			jsonObj, err := simplejson.NewJson(_tableResult.JsonStr)
-			goutils.CheckErr(err)
+			if err != nil {
+				beego.Error("simplejson.NewJson Error:", err.Error())
+				continue
+			}
+			//goutils.CheckErr(err)
 			//shoeID, _ := jsonObj.Get("DCGameVO").Get("shoeID").Int()
 			gameIDDisplay, _ := jsonObj.Get("DCGameVO").Get("gameIDDisplay").String()
 			handCount, _ := jsonObj.Get("DCGameVO").Get("handCount").Int()
 			gameStatus, _ := jsonObj.Get("gameStatus").Int()
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
 
-			//currentCountingResult := tableInfoMap[tableCode].CurrentCountingResult
-			//CurrentCountingResultList *map[string]models.CountingResultInterface //紀錄賽局結果
-
+			//所有算法輪巡
 			for _, currentCountingResultInterface := range tableInfoMap[tableCode].CurrentCountingResultList {
 				currentCountingResult := currentCountingResultInterface.GetCountingResult()
 				//beego.Info(string(_tableResult.JsonStr))
 				//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
 				if handCount == 1 && !currentCountingResult.HasInit {
 					//換靴 重算
-					currentCountingResult.InitCountingData()
+					currentCountingResultInterface.InitChangShoeField()
 				}
 
 				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
@@ -172,14 +179,14 @@ func processData() {
 
 					//TODO:取路紙
 
-					gotResult := currentCountingResult.Counting(cardList)
+					gotResult := currentCountingResultInterface.Counting(cardList)
 					if gotResult {
 						//有預測結果了
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
 						PublishCountingSuggest(currentCountingResult) //決定告知預測
 					} else {
 						//這局沒勝算，清除上一期預測結果(已公布過的)
-						currentCountingResult.ClearGuessResult()
+						currentCountingResultInterface.ClearGuessResult()
 					}
 				}
 
@@ -220,7 +227,6 @@ func connectTable(tableCode string) {
 			beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
 		} else {
 			tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
-
 		}
 		//goutils.CheckErr(err)
 	}

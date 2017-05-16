@@ -111,8 +111,10 @@ func chatroom() {
 				ch.Value.(chan bool) <- true
 				waitingList.Remove(ch)
 			}
+			//TODO:實作不同的call 不同機器人權限連線的  WebSocket
+			//注冊時就依權限分類不同的 subscribers(定時去檢查清單，到期就踢掉一些人，或是發佈時檢查其條件還在不在去踢一些人)
 
-			broadcastWebSocket(event)
+			broadcastWebSocket(event) //給所有的 人
 			models.NewArchive(event)
 
 			if event.Type == models.EVENT_MESSAGE {

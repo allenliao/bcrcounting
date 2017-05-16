@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	maxBanker, maxTie, maxPlayer float64 = -1, -1, -1
+	maxBanker, maxTie, maxPlayer float64 = -0.007925005629658699, -0.009793972596526146, -0.11981399357318878
 	Bcr_BetTypeCount             uint8   = 5
 	//賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢
 	Bcr_PlayerHouseEdgeDefault float32 = -0.0124
@@ -34,11 +34,37 @@ var (
 
 var BetTypeCount uint8 = 5
 
+//百家樂第一種計算方法
+//紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
+
+func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]CountingResultInterface {
+	cardCountingMethod := CountingResultMethod1{}
+	longtrendMethod := CountingResultMethod2{}
+	cardCountingMethod_addr := &cardCountingMethod
+	longtrendMethod_addr := &longtrendMethod
+	//methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
+
+	//注冊算法
+	currentCountingResultList := map[string]CountingResultInterface{
+		"cardCounting": cardCountingMethod_addr,
+		"longtrend":    longtrendMethod_addr}
+
+	for _, methodObj_addr := range currentCountingResultList {
+		//methodObj.InitBaseField(BUCode, tableNo)
+		methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
+		currentCountingResult := methodObj_addr.GetCountingResult()
+		beego.Info("CreateCurrentCountingResultList currentCountingResult.BUCode:" + currentCountingResult.BUCode)
+	}
+
+	return currentCountingResultList
+
+}
+
 type CountingResultInterface interface {
 	Counting(cardList [6]int) bool
-	CreateCountingResult(BUCode string, tableNo uint8)
+	InitBaseField(BUCode string, tableNo uint8)
 	ClearGuessResult()
-	InitCountingData()
+	InitChangShoeField()
 	GetCountingResult() *CountingResult
 }
 
@@ -53,22 +79,29 @@ type CountingResult struct {
 	HasInit             bool   //初始化算牌數據的 旗標
 }
 
-func (currentCountingResult CountingResult) GetCountingResult() *CountingResult {
-	return &currentCountingResult
+func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
+	return currentCountingResult
 }
 
-func (currentCountingResult CountingResult) CreateCountingResult(BUCode string, tableNo uint8) {
+func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableNo uint8) {
+	currentCountingResult.BUCode = BUCode
+	currentCountingResult.TableNo = tableNo
+	currentCountingResult.SuggestionBet = ""
+	currentCountingResult.SuggestionBetAmount = 100
+	currentCountingResult.Result = ""
+	currentCountingResult.GuessResult = false
+
 }
-func (currentCountingResult CountingResult) InitCountingData() {
+func (currentCountingResult *CountingResult) InitChangShoeField() {
 }
 
 //Type繼承CountingResult的 model都可以用?
-func (currentCountingResult CountingResult) ClearGuessResult() {
+func (currentCountingResult *CountingResult) ClearGuessResult() {
 	currentCountingResult.SuggestionBet = ""
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
 }
-func (currentCountingResult CountingResult) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResult) Counting(cardList [6]int) bool {
 	return false
 }
 
@@ -79,7 +112,8 @@ type CountingResultMethod1 struct {
 	BetSuggestionSliceForSort BetSuggestionSlice     //排序用的
 }
 
-func (currentCountingResult CountingResultMethod1) CreateCountingResult(BUCode string, tableNo uint8) {
+func (currentCountingResult *CountingResultMethod1) InitBaseField(BUCode string, tableNo uint8) {
+
 	var betSuggestionMap = make(map[int]*BetSuggestion)
 	betSuggestionMap[Bcr_BETTYPE_BANKER] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_BANKER,
@@ -105,12 +139,19 @@ func (currentCountingResult CountingResultMethod1) CreateCountingResult(BUCode s
 	currentCountingResult.BetSuggestionSliceForSort = make(BetSuggestionSlice, 0, len(betSuggestionMap))
 
 	for _, betSuggestion_adr := range betSuggestionMap {
+		beego.Info("CountingResultMethod1.InitBaseField betSuggestion_adr:" + fmt.Sprint(betSuggestion_adr))
 		currentCountingResult.BetSuggestionSliceForSort = append(currentCountingResult.BetSuggestionSliceForSort, betSuggestion_adr)
 	}
 
 }
 
-func (currentCountingResult CountingResultMethod1) InitCountingData() {
+func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
+	beego.Info("CountingResultMethod1.InitChangShoeField BUCode:" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
+
+	if currentCountingResult.BetSuggestionMap == nil {
+		beego.Info("CountingResultMethod1.BetSuggestionMap==nil")
+	}
+	beego.Info("CountingResultMethod1.BetSuggestionMap[Bcr_BETTYPE_BANKER]" + fmt.Sprint(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER]))
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = Bcr_BankerHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = Bcr_PlayerHouseEdgeDefault
@@ -121,11 +162,15 @@ func (currentCountingResult CountingResultMethod1) InitCountingData() {
 
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
-func (currentCountingResult CountingResultMethod1) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int) bool {
+	beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	for _, point := range cardList { //idx, card point
 		if point == -1 {
 			continue
+		}
+		if currentCountingResult.BetSuggestionMap == nil {
+			beego.Info("currentCountingResult.BetSuggestionMap==nil")
 		}
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge += Bcr_PlayerHouseEdgeEffectList[point]
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge += Bcr_BankerHouseEdgeEffectList[point]
@@ -151,7 +196,7 @@ func (currentCountingResult CountingResultMethod1) Counting(cardList [6]int) boo
 		beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
 	}
 
-	if betSuggestion.HouseEdge > 0 { //擊敗賭場優勢 //除非有退庸，不然不可能>0
+	if hitHouseEdge(betSuggestion) { //擊敗賭場優勢 //除非有退庸，不然不可能HouseEdge>0
 		//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
 		betSuggestion.IsSuggestBet = true
 		currentCountingResult.SuggestionBet = TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
@@ -162,19 +207,23 @@ func (currentCountingResult CountingResultMethod1) Counting(cardList [6]int) boo
 
 }
 
+func hitHouseEdge(betSuggestion *BetSuggestion) bool {
+	if betSuggestion.BetType == Bcr_BETTYPE_BANKER {
+		return float64(betSuggestion.HouseEdge) > maxBanker
+	}
+	if betSuggestion.BetType == Bcr_BETTYPE_PLAYER {
+		return float64(betSuggestion.HouseEdge) > maxPlayer
+	}
+	if betSuggestion.BetType == Bcr_BETTYPE_TIE {
+		return float64(betSuggestion.HouseEdge) > maxTie
+	}
+
+	return false
+}
+
 //長龍
 type CountingResultMethod2 struct {
 	CountingResult
-}
-
-func (currentCountingResult CountingResultMethod2) CreateCountingResult(BUCode string, tableNo uint8) {
-
-	currentCountingResult.BUCode = BUCode
-	currentCountingResult.TableNo = tableNo
-	currentCountingResult.SuggestionBet = ""
-	currentCountingResult.SuggestionBetAmount = 100
-	currentCountingResult.Result = ""
-	currentCountingResult.GuessResult = false
 }
 
 //排序用的

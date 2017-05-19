@@ -2,7 +2,6 @@ package models
 
 import (
 	"fmt"
-	"math"
 	"sort"
 
 	"github.com/astaxie/beego"
@@ -20,7 +19,7 @@ const (
 )
 
 var (
-	maxBanker, maxTie, maxPlayer float64 = -0.007925005629658699, -0.009793972596526146, -0.11981399357318878
+	maxBanker, maxTie, maxPlayer float64 = -0.007925005629658699, -0.11981399357318878, -0.009793972596526146
 	Bcr_BetTypeCount             uint8   = 5
 	//賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢
 	Bcr_PlayerHouseEdgeDefault float32 = -0.0124
@@ -60,8 +59,44 @@ func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]Co
 
 }
 
+//排序用的
+type BetSuggestionSlice []*BetSuggestion
+
+// Len is part of sort.Interface.
+func (d BetSuggestionSlice) Len() int {
+	return len(d)
+}
+
+// Swap is part of sort.Interface.
+func (d BetSuggestionSlice) Swap(i, j int) {
+	d[i], d[j] = d[j], d[i]
+}
+
+// Less is part of sort.Interface. We use count as the value to sort by
+func (d BetSuggestionSlice) Less(i, j int) bool {
+	return d[i].HouseEdge > d[j].HouseEdge
+}
+
+type BetSuggestion struct {
+	BetType      uint8
+	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)//半年才會碰到一次
+	IsSuggestBet bool
+}
+
+func TransBetTypeToStr(betType uint8) string {
+	switch betType {
+	case Bcr_BETTYPE_BANKER:
+		return "莊"
+	case Bcr_BETTYPE_PLAYER:
+		return "閒"
+	case Bcr_BETTYPE_TIE:
+		return "和"
+	}
+	return ""
+}
+
 type CountingResultInterface interface {
-	Counting(cardList [6]int) bool
+	Counting(cardList [6]int, beadRoadList []int) bool
 	InitBaseField(BUCode string, tableNo uint8)
 	ClearGuessResult()
 	InitChangShoeField()
@@ -101,7 +136,7 @@ func (currentCountingResult *CountingResult) ClearGuessResult() {
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
 }
-func (currentCountingResult *CountingResult) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResult) Counting(cardList [6]int, beadRoadList []int) bool {
 	return false
 }
 
@@ -162,7 +197,7 @@ func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
 
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
-func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int) bool {
+func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, beadRoadList []int) bool {
 	beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	for _, point := range cardList { //idx, card point
@@ -176,46 +211,51 @@ func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int) bo
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge += Bcr_BankerHouseEdgeEffectList[point]
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge += Bcr_TieHouseEdgeEffectList[point]
 	}
-	/*
-	   //for test
-	   	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = -5
-	   	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = 2
-	   	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge = -1
-	*/
 
 	//HouseEdge排序算出結果(越大越好)
 	sort.Sort(currentCountingResult.BetSuggestionSliceForSort)
-	betSuggestion := currentCountingResult.BetSuggestionSliceForSort[0] //最大的
-
-	maxBanker = math.Max(float64(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge), maxBanker)
-	maxPlayer = math.Max(float64(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge), maxPlayer)
-	maxTie = math.Max(float64(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_TIE].HouseEdge), maxTie)
+	//betSuggestion := currentCountingResult.BetSuggestionSliceForSort[0] //最大的
 
 	beego.Info("maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
-	for idx, betSuggestion := range currentCountingResult.BetSuggestionSliceForSort {
-		beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
+	result := false
+	for _, betSuggestion := range currentCountingResult.BetSuggestionSliceForSort {
+		//beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
+
+		if hitHouseEdge(betSuggestion) { //擊敗賭場優勢 //除非有退庸，不然不可能HouseEdge>0
+			//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
+			betSuggestion.IsSuggestBet = true
+			currentCountingResult.SuggestionBet = TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
+			result = true
+			break
+		}
 	}
 
-	if hitHouseEdge(betSuggestion) { //擊敗賭場優勢 //除非有退庸，不然不可能HouseEdge>0
-		//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
-		betSuggestion.IsSuggestBet = true
-		currentCountingResult.SuggestionBet = TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
-		return true
-	}
-
-	return false
+	return result
 
 }
 
 func hitHouseEdge(betSuggestion *BetSuggestion) bool {
+	houseEdge := float64(betSuggestion.HouseEdge)
 	if betSuggestion.BetType == Bcr_BETTYPE_BANKER {
-		return float64(betSuggestion.HouseEdge) > maxBanker
+		if houseEdge > maxBanker {
+			maxBanker = houseEdge
+			return true
+		}
+		beego.Info("Banker houseEdge:" + fmt.Sprint(houseEdge))
 	}
 	if betSuggestion.BetType == Bcr_BETTYPE_PLAYER {
-		return float64(betSuggestion.HouseEdge) > maxPlayer
+		if houseEdge > maxPlayer {
+			maxPlayer = houseEdge
+			return true
+		}
+		beego.Info("Player houseEdge:" + fmt.Sprint(houseEdge))
 	}
 	if betSuggestion.BetType == Bcr_BETTYPE_TIE {
-		return float64(betSuggestion.HouseEdge) > maxTie
+		if houseEdge > maxTie {
+			maxTie = houseEdge
+			return true
+		}
+		beego.Info("Tie houseEdge:" + fmt.Sprint(houseEdge))
 	}
 
 	return false
@@ -226,38 +266,20 @@ type CountingResultMethod2 struct {
 	CountingResult
 }
 
-//排序用的
-type BetSuggestionSlice []*BetSuggestion
+//用字串搜尋的 方法
+func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadList []int) bool {
+	var betType int = beadRoadList[len(beadRoadList)-1]
+	var count uint8 = 1
+	for idx := len(beadRoadList) - 2; idx >= 0; idx-- {
 
-// Len is part of sort.Interface.
-func (d BetSuggestionSlice) Len() int {
-	return len(d)
-}
+		if betType != beadRoadList[idx] {
+			if count>currentCountingResult.maxcount
+			betType = beadRoadList[idx]
+		} else {
+			count++
+		}
 
-// Swap is part of sort.Interface.
-func (d BetSuggestionSlice) Swap(i, j int) {
-	d[i], d[j] = d[j], d[i]
-}
 
-// Less is part of sort.Interface. We use count as the value to sort by
-func (d BetSuggestionSlice) Less(i, j int) bool {
-	return d[i].HouseEdge > d[j].HouseEdge
-}
-
-type BetSuggestion struct {
-	BetType      uint8
-	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)//半年才會碰到一次
-	IsSuggestBet bool
-}
-
-func TransBetTypeToStr(betType uint8) string {
-	switch betType {
-	case Bcr_BETTYPE_BANKER:
-		return "莊"
-	case Bcr_BETTYPE_PLAYER:
-		return "閒"
-	case Bcr_BETTYPE_TIE:
-		return "和"
 	}
-	return ""
+	return false
 }

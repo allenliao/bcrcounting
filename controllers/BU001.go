@@ -71,6 +71,19 @@ func StartProcess() {
 	}
 }
 
+func jsonBeadRoadCode2BetType(beadRoadCode string) int {
+	if beadRoadCode == "2" || beadRoadCode == "6" || beadRoadCode == "7" {
+		return models.Bcr_BETTYPE_PLAYER
+	}
+	if beadRoadCode == "1" || beadRoadCode == "4" || beadRoadCode == "5" || beadRoadCode == "8" {
+		return models.Bcr_BETTYPE_BANKER
+	}
+	if beadRoadCode == "3" || beadRoadCode == "10" || beadRoadCode == "11" {
+		return models.Bcr_BETTYPE_TIE
+	}
+	return models.Bcr_BETTYPE_TIE
+}
+
 func barcode2point(barcode int) int {
 	point := barcode % 13
 	if point == 0 || point >= 10 {
@@ -113,6 +126,7 @@ func processData() {
 			handCount, _ := jsonObj.Get("DCGameVO").Get("handCount").Int()
 			gameStatus, _ := jsonObj.Get("gameStatus").Int()
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
+			beadRoadDisplayList, _ := jsonObj.Get("allRoadDisplayList").Get("beadRoadDisplayList").Array()
 
 			//所有算法輪巡
 			for _, currentCountingResultInterface := range tableInfoMap[tableCode].CurrentCountingResultList {
@@ -152,7 +166,6 @@ func processData() {
 
 					}
 
-					//Method1
 					//取牌
 					b1, _ := jsonObj.Get("baccaratResultVO").Get("b1").Int()
 					b1 = b1 % 13
@@ -177,9 +190,20 @@ func processData() {
 						cardList[idx] = barcode2point(barcode)
 					}
 
-					//TODO:取路紙
+					//取路紙(珠盤路)
+					if beadRoadDisplayList != nil {
+						beadRoadDisplayListLen := len(beadRoadDisplayList)
+						beadRoadList := make([]int, beadRoadDisplayListLen)
+						for idx, betType := range beadRoadDisplayList {
+							beadRoadList[idx] = jsonBeadRoadCode2BetType(fmt.Sprint(betType))
+							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
+							//beego.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
+						}
 
-					gotResult := currentCountingResultInterface.Counting(cardList)
+					}
+
+					//餵牌 餵路紙 做計算
+					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadList)
 					if gotResult {
 						//有預測結果了
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")

@@ -96,7 +96,7 @@ func TransBetTypeToStr(betType uint8) string {
 }
 
 type CountingResultInterface interface {
-	Counting(cardList [6]int, beadRoadList []int) bool
+	Counting(cardList [6]int, beadRoadStrList string) bool
 	InitBaseField(BUCode string, tableNo uint8)
 	ClearGuessResult()
 	InitChangShoeField()
@@ -136,7 +136,7 @@ func (currentCountingResult *CountingResult) ClearGuessResult() {
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
 }
-func (currentCountingResult *CountingResult) Counting(cardList [6]int, beadRoadList []int) bool {
+func (currentCountingResult *CountingResult) Counting(cardList [6]int, beadRoadStrList string) bool {
 	return false
 }
 
@@ -197,7 +197,7 @@ func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
 
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
-func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, beadRoadList []int) bool {
+func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, beadRoadStrList string) bool {
 	beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	for _, point := range cardList { //idx, card point
@@ -264,22 +264,12 @@ func hitHouseEdge(betSuggestion *BetSuggestion) bool {
 //長龍
 type CountingResultMethod2 struct {
 	CountingResult
+	Pattern  string
+	HitCount uint8
 }
 
 //用字串搜尋的 方法
-func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadList []int) bool {
-	var betType int = beadRoadList[len(beadRoadList)-1]
-	var count uint8 = 1
-	for idx := len(beadRoadList) - 2; idx >= 0; idx-- {
+func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadStrList string) bool {
 
-		if betType != beadRoadList[idx] {
-			if count>currentCountingResult.maxcount
-			betType = beadRoadList[idx]
-		} else {
-			count++
-		}
-
-
-	}
 	return false
 }

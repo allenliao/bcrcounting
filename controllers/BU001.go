@@ -192,18 +192,20 @@ func processData() {
 
 					//取路紙(珠盤路)
 					if beadRoadDisplayList != nil {
-						beadRoadDisplayListLen := len(beadRoadDisplayList)
-						beadRoadList := make([]int, beadRoadDisplayListLen)
+						//beadRoadDisplayListLen := len(beadRoadDisplayList)
+						//beadRoadStrList := make([]int, beadRoadDisplayListLen)
+						var beadRoadStrList string
 						for idx, betType := range beadRoadDisplayList {
-							beadRoadList[idx] = jsonBeadRoadCode2BetType(fmt.Sprint(betType))
+							beadRoadStrList += fmt.Sprint(jsonBeadRoadCode2BetType(fmt.Sprint(betType)))
 							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
 							//beego.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
 						}
+						beego.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStrList)
 
 					}
 
 					//餵牌 餵路紙 做計算
-					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadList)
+					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadStrList)
 					if gotResult {
 						//有預測結果了
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")

@@ -6,6 +6,7 @@
 package controllers
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -71,17 +72,17 @@ func StartProcess() {
 	}
 }
 
-func jsonBeadRoadCode2BetType(beadRoadCode string) int {
+func jsonBeadRoadCode2BetTypeStr(beadRoadCode string) string {
 	if beadRoadCode == "2" || beadRoadCode == "6" || beadRoadCode == "7" {
-		return models.Bcr_BETTYPE_PLAYER
+		return fmt.Sprint(models.Bcr_BETTYPE_PLAYER)
 	}
 	if beadRoadCode == "1" || beadRoadCode == "4" || beadRoadCode == "5" || beadRoadCode == "8" {
-		return models.Bcr_BETTYPE_BANKER
+		return fmt.Sprint(models.Bcr_BETTYPE_BANKER)
 	}
 	if beadRoadCode == "3" || beadRoadCode == "10" || beadRoadCode == "11" {
-		return models.Bcr_BETTYPE_TIE
+		return fmt.Sprint(models.Bcr_BETTYPE_TIE)
 	}
-	return models.Bcr_BETTYPE_TIE
+	return fmt.Sprint(models.Bcr_BETTYPE_TIE)
 }
 
 func barcode2point(barcode int) int {
@@ -154,6 +155,8 @@ func processData() {
 							if betType != models.Bcr_BETTYPE_NONE {
 								//取得結果
 								currentCountingResult.Result = models.TransBetTypeToStr(betType)
+								currentCountingResult.TieReturn = (currentCountingResult.Result == models.TransBetTypeToStr(models.Bcr_BETTYPE_TIE) &&
+									(currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_BANKER) || currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_PLAYER)))
 								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
 								break
@@ -189,23 +192,25 @@ func processData() {
 					for idx, barcode := range cardList {
 						cardList[idx] = barcode2point(barcode)
 					}
-
+					var beadRoadStr string
 					//取路紙(珠盤路)
 					if beadRoadDisplayList != nil {
 						//beadRoadDisplayListLen := len(beadRoadDisplayList)
 						//beadRoadStrList := make([]int, beadRoadDisplayListLen)
-						var beadRoadStrList string
-						for idx, betType := range beadRoadDisplayList {
-							beadRoadStrList += fmt.Sprint(jsonBeadRoadCode2BetType(fmt.Sprint(betType)))
+						var beadRoadBfr bytes.Buffer
+
+						for _, betType := range beadRoadDisplayList {
+							beadRoadBfr.WriteString(jsonBeadRoadCode2BetTypeStr(fmt.Sprint(betType)))
 							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
 							//beego.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
 						}
-						beego.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStrList)
+						beadRoadStr = beadRoadBfr.String()
+						beego.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStr)
 
 					}
 
 					//餵牌 餵路紙 做計算
-					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadStrList)
+					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadStr)
 					if gotResult {
 						//有預測結果了
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")

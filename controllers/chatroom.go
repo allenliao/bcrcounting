@@ -88,12 +88,20 @@ func chatroom() {
 			//報告預測結果
 			//該局有提供建議時才會填這一局的 Result
 			var guessResultStr string
-			if _countingResult.GuessResult {
-				guessResultStr = "勝"
+			if _countingResult.TieReturn {
+				guessResultStr = "平"
+
 			} else {
-				guessResultStr = "負"
+
+				if _countingResult.GuessResult {
+					guessResultStr = "勝"
+				} else {
+					guessResultStr = "負"
+				}
+
 			}
 			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
+
 			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
 			beego.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")
 		case sub := <-subscribe:

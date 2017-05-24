@@ -183,12 +183,12 @@ func (currentCountingResult *CountingResultMethod1) InitCustomField() {
 }
 
 func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
-	beego.Info("CountingResultMethod1.InitChangShoeField BUCode:" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
+	//beego.Info("CountingResultMethod1.InitChangShoeField BUCode:" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	if currentCountingResult.BetSuggestionMap == nil {
 		beego.Info("CountingResultMethod1.BetSuggestionMap==nil")
 	}
-	beego.Info("CountingResultMethod1.BetSuggestionMap[Bcr_BETTYPE_BANKER]" + fmt.Sprint(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER]))
+	//beego.Info("CountingResultMethod1.BetSuggestionMap[Bcr_BETTYPE_BANKER]" + fmt.Sprint(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER]))
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = Bcr_BankerHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = Bcr_PlayerHouseEdgeDefault
@@ -200,7 +200,7 @@ func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
 func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, beadRoadStr string) bool {
-	beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
+	//beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	for _, point := range cardList { //idx, card point
 		if point == -1 {
@@ -218,7 +218,7 @@ func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, be
 	sort.Sort(currentCountingResult.BetSuggestionSliceForSort)
 	//betSuggestion := currentCountingResult.BetSuggestionSliceForSort[0] //最大的
 
-	beego.Info("maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
+	beego.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + "maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
 	result := false
 	for _, betSuggestion := range currentCountingResult.BetSuggestionSliceForSort {
 		//beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 	"time"
 
 	"fmt"
@@ -139,8 +140,9 @@ func processData() {
 					currentCountingResultInterface.InitChangShoeField()
 				}
 
-				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 {
+				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 && len(beadRoadDisplayList) >= handCount {
 					beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
+					beego.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)))
 					currentCountingResult.HasInit = false
 					currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
 					//若上一局有預測結果，要告知這一局的發牌結果
@@ -231,8 +233,10 @@ func processData() {
 func fetchTableData(_tableInfo *tableInfo) {
 	tableCode := _tableInfo.TableCode
 
-	var duration time.Duration = 1 //1 秒取一次
-	for _ = range time.Tick(duration * time.Second) {
+	//var duration time.Duration = 1 //1 秒取一次
+	//for _ = range time.Tick(duration * time.Second) {
+	ticker := time.NewTicker(time.Millisecond * 200)
+	for _ = range ticker.C {
 		/*
 			timestamp := time.Now().Local()
 			str := "fetchTableData TableCode:" + tableCode + " => at " + timestamp.String()

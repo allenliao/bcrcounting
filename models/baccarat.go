@@ -115,6 +115,7 @@ type CountingResult struct {
 	Result              string //發牌結果
 	GuessResult         bool   //猜測的結果
 	TieReturn           bool   //開和 若壓莊閒 須返水
+	FirstHand           bool   //第一局結果(無法預測不公佈)
 	HasInit             bool   //初始化算牌數據的 旗標
 }
 
@@ -130,6 +131,7 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.Result = ""
 	currentCountingResult.GuessResult = false
 	currentCountingResult.TieReturn = false
+	currentCountingResult.FirstHand = false
 
 }
 
@@ -143,9 +145,9 @@ func (currentCountingResult *CountingResult) InitChangShoeField() {
 //Type繼承CountingResult的 model都可以用?
 func (currentCountingResult *CountingResult) ClearGuessResult() {
 	currentCountingResult.SuggestionBet = ""
-	currentCountingResult.Result = ""
-	currentCountingResult.GuessResult = false
-	currentCountingResult.TieReturn = false
+	//currentCountingResult.Result = ""
+	//currentCountingResult.GuessResult = false
+	//currentCountingResult.TieReturn = false
 }
 func (currentCountingResult *CountingResult) Counting(cardList [6]int, beadRoadStr string) bool {
 	return false

@@ -159,14 +159,19 @@ func processData() {
 								currentCountingResult.Result = models.TransBetTypeToStr(betType)
 								currentCountingResult.TieReturn = (currentCountingResult.Result == models.TransBetTypeToStr(models.Bcr_BETTYPE_TIE) &&
 									(currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_BANKER) || currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_PLAYER)))
+								currentCountingResult.FirstHand = (handCount == 1)
 								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
 								break
 							}
 
 						}
+						if currentCountingResult.FirstHand {
+							beego.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
+						} else {
+							beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 
-						beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
+						}
 						PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
 					}
@@ -218,8 +223,9 @@ func processData() {
 						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
 						PublishCountingSuggest(currentCountingResult) //決定告知預測
 					} else {
-						//這局沒勝算，清除上一期預測結果(已公布過的)
-						currentCountingResultInterface.ClearGuessResult()
+						//這局沒有預測結果，清除上一期預測結果(已公布過的)
+						beego.Info("tableCode:" + tableCode + " 沒有預測結果 ClearGuessResult")
+						currentCountingResultInterface.ClearGuessResult() //這裡會把剛剛要公布的結果也刪掉，所以這裡只清預測結果
 					}
 				}
 

@@ -100,6 +100,10 @@ func chatroom() {
 				}
 
 			}
+			if _countingResult.FirstHand {
+				guessResultStr = "第一局預測不記結果"
+			}
+
 			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
 
 			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)

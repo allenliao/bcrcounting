@@ -25,12 +25,15 @@ var (
 	tableInfoMap map[string]*tableInfo
 	tableAmount  uint8
 	tableResult  chan TableInitJsonStr
+	BetAccount   *models.SimBetAccount
 )
 
 type tableInfo struct {
 	TableCode                 string
 	TableNo                   uint8
 	CurrentCountingResultList map[string]models.CountingResultInterface //紀錄賽局結果
+	bankerPayout              int8
+	odds                      map[uint8]float32 //賠率
 	//CurrentCountingResultMethod1 *models.CountingResultMethod1 //紀錄方法1的決策結果
 	//CurrentCountingResultMethod2 *models.CountingResultMethod2 //紀錄方法2的決策結果
 }
@@ -41,29 +44,30 @@ type TableInitJsonStr struct {
 }
 
 func InitBU() {
-	initDefaultValue()
+	LoginBetAccount()
+	InitTableInfo()
 	StartProcess()
+}
+func LoginBetAccount() {
+	BetAccount = &models.SimBetAccount{Balance: 100000}
+	BetAccount.LoginTime = time.Now()
 }
 
 //初始化變數 create Table Info
-func initDefaultValue() {
+func InitTableInfo() {
 	BUCode = "BU001"
 	tableResult = make(chan TableInitJsonStr, 10)
 	tableInfoMap = make(map[string]*tableInfo)
+	odds := make(map[uint8]float32) //每一桌都一樣
+	odds[models.Bcr_BETTYPE_BANKER] = 0.95
+	odds[models.Bcr_BETTYPE_PLAYER] = 1
 	tableCodeList := []string{"0001001", "0001002", "0001003", "0001004", "0001005", "0001006", "0001007", "0001008", "0001009", "0001010", "0001011", "0001012", "0001013", "0001014"}
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
 		tableNo := tableNoList[idx]
 		currentCountingResultList := models.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
-		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList}
+		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList, odds: odds}
 	}
-
-	for _, currentCountingResultInterface := range tableInfoMap["0001002"].CurrentCountingResultList {
-		currentCountingResult := currentCountingResultInterface.GetCountingResult()
-		beego.Info("initDefaultValue currentCountingResult.BUCode:" + currentCountingResult.BUCode)
-
-	}
-
 }
 
 func StartProcess() {
@@ -107,6 +111,14 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 	}
 
 	return models.Bcr_BETTYPE_NONE
+}
+
+func PlaceBet(betamount float64, betType uint8) {
+
+}
+
+func SettleBet(betType uint8) {
+
 }
 
 //處理資料

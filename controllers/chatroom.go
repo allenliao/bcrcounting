@@ -16,6 +16,7 @@ package controllers
 
 import (
 	"container/list"
+	"encoding/json"
 	"time"
 
 	"github.com/astaxie/beego"
@@ -38,6 +39,17 @@ func Join(user string, ws *websocket.Conn) {
 	subscribe <- Subscriber{Name: user, Conn: ws} //send value to channel
 }
 
+//發佈目前下注狀況
+func PublishBet(_betRecord models.BetRecord) {
+	betRecordCh <- _betRecord
+
+}
+
+//發佈目前帳戶金額
+func PublishAccountBalance(_betAccount *models.SimBetAccount) {
+	betAccountCh <- _betAccount
+}
+
 //發佈建議的結果(公布答案)
 func PublishCountingResult(_countingResult *models.CountingResult) {
 	countingResultCh <- _countingResult
@@ -58,6 +70,8 @@ type Subscriber struct {
 }
 
 var (
+	betAccountCh      = make(chan *models.SimBetAccount, 10)
+	betRecordCh       = make(chan models.BetRecord, 10)
 	countingResultCh  = make(chan *models.CountingResult, 10)
 	countingSuggestCh = make(chan *models.CountingResult, 10)
 	// Channel for new join users.
@@ -75,11 +89,24 @@ var (
 func chatroom() {
 	for {
 		select {
+		case _betRecord := <-betRecordCh:
+			contentTyp := "下注:"
+			//"下注:"/"派彩:"
+			if _betRecord.Settled {
+				contentTyp = "派彩:"
+			}
+			_betRecordStr, _ := json.Marshal(_betRecord)
+			publish <- newEvent(models.EVENT_BET, contentTyp, string(_betRecordStr))
+
+		case _betAccount := <-betAccountCh:
+			//更新帳戶
+			publish <- newEvent(models.EVENT_ACCOUNT, "目前帳戶:", fmt.Sprint(_betAccount.Balance))
 
 		case _countingSuggest := <-countingSuggestCh:
 			//提供建議
-			if _countingSuggest.SuggestionBet != "" {
-				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + _countingSuggest.SuggestionBet
+			SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
+			if SuggestionBetStr != "" {
+				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr
 				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
 				beego.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
 			}
@@ -104,7 +131,7 @@ func chatroom() {
 				guessResultStr = "第一局預測不記結果"
 			}
 
-			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + _countingResult.Result + " 建議結果:" + guessResultStr
+			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + models.TransBetTypeToStr(_countingResult.Result) + " 建議結果:" + guessResultStr
 
 			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
 			beego.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")

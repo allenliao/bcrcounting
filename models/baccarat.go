@@ -107,16 +107,19 @@ type CountingResultInterface interface {
 }
 
 type CountingResult struct {
-	BUCode              string //BU 代碼
-	GameIDDisplay       string //局號
-	TableNo             uint8  //桌號
-	SuggestionBet       string //建議下一局注別
-	SuggestionBetAmount int16  //建議下一局下注金額
-	Result              string //發牌結果
-	GuessResult         bool   //猜測的結果
-	TieReturn           bool   //開和 若壓莊閒 須返水
-	FirstHand           bool   //第一局結果(無法預測不公佈)
-	HasInit             bool   //初始化算牌數據的 旗標
+	BUCode              string  //BU 代碼
+	GameIDDisplay       string  //局號
+	TableNo             uint8   //桌號
+	SuggestionBet       uint8   //建議下一局注別
+	SuggestionBetAmount float64 //建議下一局下注金額
+	Result              uint8   //發牌結果
+	GuessResult         bool    //猜測的結果
+	TieReturn           bool    //開和 若壓莊閒 須返水
+	FirstHand           bool    //第一局結果(無法預測不公佈)
+	HasInit             bool    //初始化算牌數據的 旗標
+	HasBeted            bool    //被下過注了
+	MethodName          string
+	MethodID            string
 }
 
 func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
@@ -126,9 +129,9 @@ func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult
 func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableNo uint8) {
 	currentCountingResult.BUCode = BUCode
 	currentCountingResult.TableNo = tableNo
-	currentCountingResult.SuggestionBet = ""
-	currentCountingResult.SuggestionBetAmount = 100
-	currentCountingResult.Result = ""
+	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
+	currentCountingResult.SuggestionBetAmount = 100 //固定一注買一百
+	currentCountingResult.Result = Bcr_BETTYPE_NONE
 	currentCountingResult.GuessResult = false
 	currentCountingResult.TieReturn = false
 	currentCountingResult.FirstHand = false
@@ -144,7 +147,7 @@ func (currentCountingResult *CountingResult) InitChangShoeField() {
 
 //Type繼承CountingResult的 model都可以用?
 func (currentCountingResult *CountingResult) ClearGuessResult() {
-	currentCountingResult.SuggestionBet = ""
+	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
 	//currentCountingResult.Result = ""
 	//currentCountingResult.GuessResult = false
 	//currentCountingResult.TieReturn = false
@@ -160,7 +163,10 @@ type CountingResultMethod1 struct {
 	BetSuggestionSliceForSort BetSuggestionSlice     //排序用的
 }
 
+//引擎一開始時的初始化
 func (currentCountingResult *CountingResultMethod1) InitCustomField() {
+	currentCountingResult.MethodID = "M1"
+	currentCountingResult.MethodName = "賭場優勢"
 	var betSuggestionMap = make(map[int]*BetSuggestion)
 	betSuggestionMap[Bcr_BETTYPE_BANKER] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_BANKER,
@@ -226,9 +232,11 @@ func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, be
 		//beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
 
 		if hitHouseEdge(betSuggestion) { //擊敗賭場優勢 //除非有退庸，不然不可能HouseEdge>0
-			//TODO:改成個注別大於某一個統計數字就公佈，以統計勝率當作權重
+
 			betSuggestion.IsSuggestBet = true
-			currentCountingResult.SuggestionBet = TransBetTypeToStr(betSuggestion.BetType) //建議下一局買甚麼
+			currentCountingResult.SuggestionBet = betSuggestion.BetType //建議下一局買甚麼
+			//TODO:建議買多少錢
+			//TransBetTypeToStr(betSuggestion.BetType)
 			result = true
 			break
 		}
@@ -279,10 +287,12 @@ type RoadPatternInfo struct {
 
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
-	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 1}
-	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 0}
-	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 1}
-	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 0}
+	currentCountingResult.MethodID = "M2"
+	currentCountingResult.MethodName = "連6長龍跟注"
+	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 0}
+	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 1}
+	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0}
+	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1}
 
 }
 
@@ -295,7 +305,9 @@ func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, be
 		var pIdx = strings.LastIndex(beadRoadStr, Pattern)
 		if endIdx == pIdx && endIdx > 0 && pIdx > 0 {
 			beego.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " Pattern:" + Pattern + " endIdx:" + fmt.Sprint(endIdx) + " pIdx:" + fmt.Sprint(pIdx) + " roadPatternInfo.SuggestionBetType:" + TransBetTypeToStr(roadPatternInfo.SuggestionBetType))
-			currentCountingResult.SuggestionBet = TransBetTypeToStr(roadPatternInfo.SuggestionBetType) //建議下一局買甚麼
+			currentCountingResult.SuggestionBet = roadPatternInfo.SuggestionBetType
+			//TransBetTypeToStr(roadPatternInfo.SuggestionBetType) //建議下一局買甚麼
+			//SuggestionBetAmount
 			result = true
 			break
 		}

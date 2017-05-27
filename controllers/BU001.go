@@ -26,6 +26,7 @@ var (
 	tableAmount  uint8
 	tableResult  chan TableInitJsonStr
 	BetAccount   *models.SimBetAccount
+	Odds         map[uint8]float64 //賠率
 )
 
 type tableInfo struct {
@@ -33,7 +34,7 @@ type tableInfo struct {
 	TableNo                   uint8
 	CurrentCountingResultList map[string]models.CountingResultInterface //紀錄賽局結果
 	bankerPayout              int8
-	odds                      map[uint8]float32 //賠率
+
 	//CurrentCountingResultMethod1 *models.CountingResultMethod1 //紀錄方法1的決策結果
 	//CurrentCountingResultMethod2 *models.CountingResultMethod2 //紀錄方法2的決策結果
 }
@@ -51,6 +52,8 @@ func InitBU() {
 func LoginBetAccount() {
 	BetAccount = &models.SimBetAccount{Balance: 100000}
 	BetAccount.LoginTime = time.Now()
+	BetAccount.BetRecordList = make(map[string]models.BetRecord)
+	PublishAccountBalance(BetAccount)
 }
 
 //初始化變數 create Table Info
@@ -58,15 +61,16 @@ func InitTableInfo() {
 	BUCode = "BU001"
 	tableResult = make(chan TableInitJsonStr, 10)
 	tableInfoMap = make(map[string]*tableInfo)
-	odds := make(map[uint8]float32) //每一桌都一樣
-	odds[models.Bcr_BETTYPE_BANKER] = 0.95
-	odds[models.Bcr_BETTYPE_PLAYER] = 1
+	Odds = make(map[uint8]float64) //每一桌都一樣
+	Odds[models.Bcr_BETTYPE_BANKER] = 1.95
+	Odds[models.Bcr_BETTYPE_PLAYER] = 2
+	Odds[models.Bcr_BETTYPE_TIE] = 1
 	tableCodeList := []string{"0001001", "0001002", "0001003", "0001004", "0001005", "0001006", "0001007", "0001008", "0001009", "0001010", "0001011", "0001012", "0001013", "0001014"}
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
 		tableNo := tableNoList[idx]
 		currentCountingResultList := models.CreateCurrentCountingResultList(BUCode, tableNo) //map[string]models.CountingResultInterface
-		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList, odds: odds}
+		tableInfoMap[tableCode] = &tableInfo{TableCode: tableCode, TableNo: tableNo, CurrentCountingResultList: currentCountingResultList}
 	}
 }
 
@@ -113,11 +117,57 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 	return models.Bcr_BETTYPE_NONE
 }
 
-func PlaceBet(betamount float64, betType uint8) {
+func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
+	countingResult.HasBeted = true
+	betamount := countingResult.SuggestionBetAmount
+	if BetAccount.Balance > betamount {
+		BetAccount.Balance -= betamount
+
+		betRecord := models.BetRecord{BUCode: countingResult.BUCode, TableNo: countingResult.TableNo, Settled: false}
+		betRecord.BetAmmount = countingResult.SuggestionBetAmount
+		betRecord.BetType = countingResult.SuggestionBet
+		betRecord.BetTypeStr = models.TransBetTypeToStr(countingResult.SuggestionBet)
+		betRecord.GameIDDisplay = GameIDDisplay
+		betRecord.BetTime = time.Now()
+		BetAccount.BetRecordList[GameIDDisplay] = betRecord
+		beego.Info("PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance))
+		/*
+			BetTime        time.Time
+				BUCode         string
+				TableNo        uint8
+				GameIDDisplay  string //局號
+				GameResultType uint8
+				BetType        uint8
+				BetAmmount     float64
+		*/
+
+		PublishBet(betRecord)
+		PublishAccountBalance(BetAccount)
+	} else {
+		//錢不夠
+	}
 
 }
 
-func SettleBet(betType uint8) {
+//派彩
+func SettleBet(countingResult *models.CountingResult) {
+	if countingResult.HasBeted {
+		betRecord := BetAccount.BetRecordList[countingResult.GameIDDisplay]
+		betRecord.GameResultType = countingResult.Result
+		betRecord.GameResultTypeStr = models.TransBetTypeToStr(betRecord.GameResultType)
+		if betRecord.BetType == countingResult.Result {
+			betRecord.Settled = true
+			betRecord.WinAmmount = Odds[countingResult.Result] * betRecord.BetAmmount
+
+			BetAccount.Balance += betRecord.WinAmmount
+			beego.Info("SettleBet Balance:" + fmt.Sprint(BetAccount.Balance))
+
+			PublishBet(betRecord)
+			PublishAccountBalance(BetAccount)
+		}
+
+		countingResult.HasBeted = false
+	}
 
 }
 
@@ -152,13 +202,18 @@ func processData() {
 					currentCountingResultInterface.InitChangShoeField()
 				}
 
+				//下注時間 且該桌有預測訊息 還沒被下過注
+				if gameStatus == 2 && currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE && !currentCountingResult.HasBeted {
+					PlaceBet(currentCountingResult, gameIDDisplay)
+				}
+
 				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 && len(beadRoadDisplayList) >= handCount {
-					beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBet:" + currentCountingResult.SuggestionBet)
+					beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
 					beego.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)))
 					currentCountingResult.HasInit = false
 					currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
-					//若上一局有預測結果，要告知這一局的發牌結果
-					if currentCountingResult.SuggestionBet != "" {
+					//若上一局有預測結果，要告知這一局的發牌結果 TransBetTypeToStr(roadPatternInfo.SuggestionBetType)
+					if currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE {
 						for _, resultObj := range arrayOfGameResult {
 							resultMap, _ := resultObj.(map[string]interface{}) //要做斷言檢查才能使用
 							resultStr := fmt.Sprint(resultMap["result"])
@@ -168,9 +223,9 @@ func processData() {
 							beego.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
 							if betType != models.Bcr_BETTYPE_NONE {
 								//取得結果
-								currentCountingResult.Result = models.TransBetTypeToStr(betType)
-								currentCountingResult.TieReturn = (currentCountingResult.Result == models.TransBetTypeToStr(models.Bcr_BETTYPE_TIE) &&
-									(currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_BANKER) || currentCountingResult.SuggestionBet == models.TransBetTypeToStr(models.Bcr_BETTYPE_PLAYER)))
+								currentCountingResult.Result = betType
+								currentCountingResult.TieReturn = (currentCountingResult.Result == models.Bcr_BETTYPE_TIE &&
+									(currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_BANKER || currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_PLAYER))
 								currentCountingResult.FirstHand = (handCount == 1)
 								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
@@ -181,8 +236,8 @@ func processData() {
 						if currentCountingResult.FirstHand {
 							beego.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
 						} else {
-							beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + currentCountingResult.Result + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
-
+							beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
+							SettleBet(currentCountingResult)
 						}
 						PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 

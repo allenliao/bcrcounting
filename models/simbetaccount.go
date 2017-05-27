@@ -18,8 +18,22 @@ import "time"
 
 //模擬下注的 帳號
 type SimBetAccount struct {
-	Balance    int64
-	LoginTime  time.Time
-	LogoutTime time.Time
-	//betHistory BetHistory
+	Balance       float64
+	LoginTime     time.Time
+	LogoutTime    time.Time
+	BetRecordList map[string]BetRecord
+}
+
+type BetRecord struct {
+	BetTime           time.Time
+	BUCode            string
+	TableNo           uint8
+	GameIDDisplay     string //局號
+	GameResultType    uint8
+	GameResultTypeStr string
+	BetType           uint8
+	BetTypeStr        string
+	BetAmmount        float64
+	WinAmmount        float64
+	Settled           bool
 }

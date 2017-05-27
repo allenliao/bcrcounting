@@ -21,11 +21,13 @@ import (
 type EventType int
 
 const (
-	EVENT_JOIN = iota
-	EVENT_LEAVE
-	EVENT_MESSAGE
-	EVENT_SUGGESTION
-	EVENT_RESULT
+	EVENT_JOIN       = 0
+	EVENT_LEAVE      = 1
+	EVENT_MESSAGE    = 2
+	EVENT_SUGGESTION = 3
+	EVENT_RESULT     = 4
+	EVENT_ACCOUNT    = 5
+	EVENT_BET        = 6
 )
 
 type Event struct {

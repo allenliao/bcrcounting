@@ -36,4 +36,5 @@ type BetRecord struct {
 	BetAmmount        float64
 	WinAmmount        float64
 	Settled           bool
+	CurrentBalance    float64
 }

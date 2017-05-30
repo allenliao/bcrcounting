@@ -2,10 +2,9 @@ package models
 
 import (
 	"fmt"
+	"goutils"
 	"sort"
 	"strings"
-
-	"github.com/astaxie/beego"
 )
 
 type BetType uint8
@@ -54,7 +53,7 @@ func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]Co
 		methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
 		methodObj_addr.InitCustomField()              //初始化個別算法所需要的參數
 		currentCountingResult := methodObj_addr.GetCountingResult()
-		beego.Info("CreateCurrentCountingResultList currentCountingResult.BUCode:" + currentCountingResult.BUCode)
+		goutils.Logger.Info("CreateCurrentCountingResultList currentCountingResult.BUCode:" + currentCountingResult.BUCode)
 	}
 
 	return currentCountingResultList
@@ -83,6 +82,7 @@ type BetSuggestion struct {
 	BetType      uint8
 	HouseEdge    float32 //要大於0才有搞頭(賭場優勢 (莊贏抽水0.05為例) ，若算到後來變正的 變賭場失去優勢)//半年才會碰到一次
 	IsSuggestBet bool
+	PatternName  string
 }
 
 func TransBetTypeToStr(betType uint8) string {
@@ -112,6 +112,8 @@ type CountingResult struct {
 	TableNo             uint8   //桌號
 	SuggestionBet       uint8   //建議下一局注別
 	SuggestionBetAmount float64 //建議下一局下注金額
+	DefaultBetAmount    float64 //預設下注金額
+	TrendName           string  //趨勢名稱
 	Result              uint8   //發牌結果
 	GuessResult         bool    //猜測的結果
 	TieReturn           bool    //開和 若壓莊閒 須返水
@@ -120,6 +122,9 @@ type CountingResult struct {
 	HasBeted            bool    //被下過注了
 	MethodName          string
 	MethodID            string
+	DubleBet            bool //倍投
+	DubleBetWhenWin     bool //贏了倍投
+	NextBetDubleBet     bool //下一注倍投
 }
 
 func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
@@ -130,11 +135,14 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.BUCode = BUCode
 	currentCountingResult.TableNo = tableNo
 	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
-	currentCountingResult.SuggestionBetAmount = 100 //固定一注買一百
+	currentCountingResult.SuggestionBetAmount = 100
+	currentCountingResult.DefaultBetAmount = 100
 	currentCountingResult.Result = Bcr_BETTYPE_NONE
 	currentCountingResult.GuessResult = false
 	currentCountingResult.TieReturn = false
 	currentCountingResult.FirstHand = false
+	currentCountingResult.DubleBet = false
+	currentCountingResult.DubleBetWhenWin = false
 
 }
 
@@ -143,6 +151,7 @@ func (currentCountingResult *CountingResult) InitCustomField(BUCode string, tabl
 }
 
 func (currentCountingResult *CountingResult) InitChangShoeField() {
+	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
 }
 
 //Type繼承CountingResult的 model都可以用?
@@ -171,32 +180,35 @@ func (currentCountingResult *CountingResultMethod1) InitCustomField() {
 	betSuggestionMap[Bcr_BETTYPE_BANKER] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_BANKER,
 		HouseEdge:    Bcr_BankerHouseEdgeDefault,
+		PatternName:  "莊家失去賭場優勢",
 		IsSuggestBet: false}
 	betSuggestionMap[Bcr_BETTYPE_PLAYER] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_PLAYER,
 		HouseEdge:    Bcr_PlayerHouseEdgeDefault,
+		PatternName:  "閒家失去賭場優勢",
 		IsSuggestBet: false}
 	betSuggestionMap[Bcr_BETTYPE_TIE] = &BetSuggestion{
 		BetType:      Bcr_BETTYPE_TIE,
 		HouseEdge:    Bcr_TieHouseEdgeDefault,
+		PatternName:  "和失去賭場優勢",
 		IsSuggestBet: false}
 
 	currentCountingResult.BetSuggestionMap = betSuggestionMap
 	currentCountingResult.BetSuggestionSliceForSort = make(BetSuggestionSlice, 0, len(betSuggestionMap))
 
 	for _, betSuggestion_adr := range betSuggestionMap {
-		beego.Info("CountingResultMethod1.InitBaseField betSuggestion_adr:" + fmt.Sprint(betSuggestion_adr))
+		goutils.Logger.Info("CountingResultMethod1.InitBaseField betSuggestion_adr:" + fmt.Sprint(betSuggestion_adr))
 		currentCountingResult.BetSuggestionSliceForSort = append(currentCountingResult.BetSuggestionSliceForSort, betSuggestion_adr)
 	}
 }
 
 func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
-	//beego.Info("CountingResultMethod1.InitChangShoeField BUCode:" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
+	//goutils.Logger.Info("CountingResultMethod1.InitChangShoeField BUCode:" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	if currentCountingResult.BetSuggestionMap == nil {
-		beego.Info("CountingResultMethod1.BetSuggestionMap==nil")
+		goutils.Logger.Info("CountingResultMethod1.BetSuggestionMap==nil")
 	}
-	//beego.Info("CountingResultMethod1.BetSuggestionMap[Bcr_BETTYPE_BANKER]" + fmt.Sprint(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER]))
+	//goutils.Logger.Info("CountingResultMethod1.BetSuggestionMap[Bcr_BETTYPE_BANKER]" + fmt.Sprint(currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER]))
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge = Bcr_BankerHouseEdgeDefault
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].IsSuggestBet = false
 	currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge = Bcr_PlayerHouseEdgeDefault
@@ -208,14 +220,14 @@ func (currentCountingResult *CountingResultMethod1) InitChangShoeField() {
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
 //Bcr_CountingMethod1
 func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, beadRoadStr string) bool {
-	//beego.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
+	//goutils.Logger.Info("CountingResultMethod1.Counting" + currentCountingResult.BUCode + " TableNo:" + fmt.Sprint(currentCountingResult.TableNo))
 
 	for _, point := range cardList { //idx, card point
 		if point == -1 {
 			continue
 		}
 		if currentCountingResult.BetSuggestionMap == nil {
-			beego.Info("currentCountingResult.BetSuggestionMap==nil")
+			goutils.Logger.Info("currentCountingResult.BetSuggestionMap==nil")
 		}
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_PLAYER].HouseEdge += Bcr_PlayerHouseEdgeEffectList[point]
 		currentCountingResult.BetSuggestionMap[Bcr_BETTYPE_BANKER].HouseEdge += Bcr_BankerHouseEdgeEffectList[point]
@@ -226,15 +238,16 @@ func (currentCountingResult *CountingResultMethod1) Counting(cardList [6]int, be
 	sort.Sort(currentCountingResult.BetSuggestionSliceForSort)
 	//betSuggestion := currentCountingResult.BetSuggestionSliceForSort[0] //最大的
 
-	beego.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + "maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
+	goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + "maxBanker:" + fmt.Sprint(maxBanker) + " maxPlayer:" + fmt.Sprint(maxPlayer) + " maxTie:" + fmt.Sprint(maxTie))
 	result := false
 	for _, betSuggestion := range currentCountingResult.BetSuggestionSliceForSort {
-		//beego.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
+		//goutils.Logger.Info("[" + fmt.Sprint(idx) + "]betSuggestion BetType:" + fmt.Sprint(betSuggestion.BetType) + " HouseEdge:" + fmt.Sprint(betSuggestion.HouseEdge))
 
 		if hitHouseEdge(betSuggestion) { //擊敗賭場優勢 //除非有退庸，不然不可能HouseEdge>0
 
 			betSuggestion.IsSuggestBet = true
 			currentCountingResult.SuggestionBet = betSuggestion.BetType //建議下一局買甚麼
+			currentCountingResult.TrendName = betSuggestion.PatternName
 			//TODO:建議買多少錢
 			//TransBetTypeToStr(betSuggestion.BetType)
 			result = true
@@ -253,21 +266,21 @@ func hitHouseEdge(betSuggestion *BetSuggestion) bool {
 			maxBanker = houseEdge
 			return true
 		}
-		beego.Info("Banker houseEdge:" + fmt.Sprint(houseEdge))
+		goutils.Logger.Info("Banker houseEdge:" + fmt.Sprint(houseEdge))
 	}
 	if betSuggestion.BetType == Bcr_BETTYPE_PLAYER {
 		if houseEdge > maxPlayer {
 			maxPlayer = houseEdge
 			return true
 		}
-		beego.Info("Player houseEdge:" + fmt.Sprint(houseEdge))
+		goutils.Logger.Info("Player houseEdge:" + fmt.Sprint(houseEdge))
 	}
 	if betSuggestion.BetType == Bcr_BETTYPE_TIE {
 		if houseEdge > maxTie {
 			maxTie = houseEdge
 			return true
 		}
-		beego.Info("Tie houseEdge:" + fmt.Sprint(houseEdge))
+		goutils.Logger.Info("Tie houseEdge:" + fmt.Sprint(houseEdge))
 	}
 
 	return false
@@ -283,29 +296,45 @@ type RoadPatternInfo struct {
 	Pattern string
 	//HitCount      uint8 //連續出現幾次
 	SuggestionBetType uint8
+	PatternName       string
 }
 
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.MethodID = "M2"
-	currentCountingResult.MethodName = "連6長龍跟注"
-	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 0}
-	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 1}
-	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0}
-	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1}
+	currentCountingResult.MethodName = "連7斬龍"
+	currentCountingResult.DubleBet = true
+	currentCountingResult.DubleBetWhenWin = false //輸了倍投
+	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "0000000", SuggestionBetType: 1, PatternName: "長莊"}
+	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "1111111", SuggestionBetType: 0, PatternName: "長閒"}
+	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
+	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
 
 }
 
 //用字串搜尋的 方法
 func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadStr string) bool {
 	result := false
+
+	if currentCountingResult.NextBetDubleBet {
+		if currentCountingResult.Result == Bcr_BETTYPE_TIE {
+			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount //開和維持原投注
+		} else {
+			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount * 2
+		}
+
+		result = true
+		return result
+	}
+
 	for _, roadPatternInfo := range currentCountingResult.RoadPatternInfoList {
 		Pattern := roadPatternInfo.Pattern
 		var endIdx = len(beadRoadStr) - len(Pattern)
 		var pIdx = strings.LastIndex(beadRoadStr, Pattern)
 		if endIdx == pIdx && endIdx > 0 && pIdx > 0 {
-			beego.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " Pattern:" + Pattern + " endIdx:" + fmt.Sprint(endIdx) + " pIdx:" + fmt.Sprint(pIdx) + " roadPatternInfo.SuggestionBetType:" + TransBetTypeToStr(roadPatternInfo.SuggestionBetType))
+			goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " Pattern:" + Pattern + " endIdx:" + fmt.Sprint(endIdx) + " pIdx:" + fmt.Sprint(pIdx) + " roadPatternInfo.SuggestionBetType:" + TransBetTypeToStr(roadPatternInfo.SuggestionBetType))
 			currentCountingResult.SuggestionBet = roadPatternInfo.SuggestionBetType
+			currentCountingResult.TrendName = roadPatternInfo.PatternName
 			//TransBetTypeToStr(roadPatternInfo.SuggestionBetType) //建議下一局買甚麼
 			//SuggestionBetAmount
 			result = true

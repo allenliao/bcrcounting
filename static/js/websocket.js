@@ -37,9 +37,9 @@ $(document).ready(function () {
             
             var ContentObj=JSON.parse(data.Content)
             if(ContentObj.Settled){
-                $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + ContentObj.BetTime + " 第 "+ContentObj.TableNo+" 桌"+ContentObj.GameIDDisplay+" 開 "+ ContentObj.GameResultTypeStr+" "+ContentObj.WinAmmount+"</li>");
+                $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + ContentObj.BetTime + " 第 "+ContentObj.TableNo+" 桌"+ContentObj.GameIDDisplay+" 開 "+ ContentObj.GameResultTypeStr+" "+ContentObj.WinAmmount+" 帳戶餘額:"+ContentObj.CurrentBalance+"</li>");
             }else{
-                $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + ContentObj.BetTime + " 第 "+ContentObj.TableNo+" 桌"+ContentObj.GameIDDisplay+" 買 "+ ContentObj.BetTypeStr+" "+ContentObj.BetAmmount+"</li>");
+                $("#chatbox li").first().before("<li><b>" + data.User + "</b>: " + ContentObj.BetTime + " 第 "+ContentObj.TableNo+" 桌"+ContentObj.GameIDDisplay+" 買 "+ ContentObj.BetTypeStr+" "+ContentObj.BetAmmount+" 帳戶餘額:"+ContentObj.CurrentBalance+"</li>");
             }
             
 

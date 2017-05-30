@@ -17,9 +17,9 @@ package controllers
 import (
 	"container/list"
 	"encoding/json"
+	"goutils"
 	"time"
 
-	"github.com/astaxie/beego"
 	"github.com/gorilla/websocket"
 
 	"bcrcounting/models"
@@ -95,7 +95,8 @@ func chatroom() {
 			if _betRecord.Settled {
 				contentTyp = "派彩:"
 			}
-			_betRecordStr, _ := json.Marshal(_betRecord)
+			_betRecordStr, err := json.Marshal(_betRecord)
+			goutils.CheckErr(err)
 			publish <- newEvent(models.EVENT_BET, contentTyp, string(_betRecordStr))
 
 		case _betAccount := <-betAccountCh:
@@ -106,9 +107,9 @@ func chatroom() {
 			//提供建議
 			SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
 			if SuggestionBetStr != "" {
-				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr
+				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " (" + _countingSuggest.TrendName + ")"
 				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
-				beego.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
+				goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
 			}
 
 		case _countingResult := <-countingResultCh:
@@ -134,15 +135,15 @@ func chatroom() {
 			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + models.TransBetTypeToStr(_countingResult.Result) + " 建議結果:" + guessResultStr
 
 			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
-			beego.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")
+			goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")
 		case sub := <-subscribe:
 			if !isUserExist(subscribers, sub.Name) {
 				subscribers.PushBack(sub) // Add user to the end of list.
 				// Publish a JOIN event.
 				publish <- newEvent(models.EVENT_JOIN, sub.Name, "")
-				beego.Info("New user:", sub.Name, ";WebSocket:", sub.Conn != nil)
+				goutils.Logger.Info("New user:", sub.Name, ";WebSocket:", sub.Conn != nil)
 			} else {
-				beego.Info("Old user:", sub.Name, ";WebSocket:", sub.Conn != nil)
+				goutils.Logger.Info("Old user:", sub.Name, ";WebSocket:", sub.Conn != nil)
 			}
 		case event := <-publish:
 			// Notify waiting list.
@@ -157,7 +158,7 @@ func chatroom() {
 			models.NewArchive(event)
 
 			if event.Type == models.EVENT_MESSAGE {
-				beego.Info("Message from", event.User, ";Content:", event.Content)
+				goutils.Logger.Info("Message from", event.User, ";Content:", event.Content)
 			}
 		case unsub := <-unsubscribe:
 			for sub := subscribers.Front(); sub != nil; sub = sub.Next() {
@@ -167,7 +168,7 @@ func chatroom() {
 					ws := sub.Value.(Subscriber).Conn
 					if ws != nil {
 						ws.Close()
-						beego.Error("WebSocket closed:", unsub)
+						goutils.Logger.Error("WebSocket closed:", unsub)
 					}
 					publish <- newEvent(models.EVENT_LEAVE, unsub, "") // Publish a LEAVE event.
 					break

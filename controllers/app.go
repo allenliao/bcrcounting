@@ -15,6 +15,7 @@
 package controllers
 
 import (
+	"goutils"
 	"strings"
 
 	"github.com/astaxie/beego"
@@ -24,6 +25,7 @@ import (
 var langTypes []string // Languages that are supported.
 
 func init() {
+	goutils.InitLogs()
 	// Initialize language type list.
 	langTypes = strings.Split(beego.AppConfig.String("lang_types"), "|")
 
@@ -35,6 +37,7 @@ func init() {
 			return
 		}
 	}
+
 }
 
 // baseController represents base router for all other app routers.

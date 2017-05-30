@@ -7,6 +7,7 @@ package controllers
 
 import (
 	"bytes"
+	"goutils"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -117,6 +118,7 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 	return models.Bcr_BETTYPE_NONE
 }
 
+//下注
 func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 	countingResult.HasBeted = true
 	betamount := countingResult.SuggestionBetAmount
@@ -130,6 +132,7 @@ func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 		betRecord.GameIDDisplay = GameIDDisplay
 		betRecord.BetTime = time.Now()
 		BetAccount.BetRecordList[GameIDDisplay] = betRecord
+		betRecord.CurrentBalance = BetAccount.Balance
 		beego.Info("PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance))
 		/*
 			BetTime        time.Time
@@ -155,13 +158,18 @@ func SettleBet(countingResult *models.CountingResult) {
 		betRecord := BetAccount.BetRecordList[countingResult.GameIDDisplay]
 		betRecord.GameResultType = countingResult.Result
 		betRecord.GameResultTypeStr = models.TransBetTypeToStr(betRecord.GameResultType)
-		if betRecord.BetType == countingResult.Result {
+		if betRecord.BetType == countingResult.Result || countingResult.Result == models.Bcr_BETTYPE_TIE {
+			odd := Odds[countingResult.Result]
 			betRecord.Settled = true
-			betRecord.WinAmmount = Odds[countingResult.Result] * betRecord.BetAmmount
+			betRecord.WinAmmount = odd * betRecord.BetAmmount
 
 			BetAccount.Balance += betRecord.WinAmmount
-			beego.Info("SettleBet Balance:" + fmt.Sprint(BetAccount.Balance))
+			betRecord.CurrentBalance = BetAccount.Balance
 
+			goutils.Logger.Info("TableNo:" + fmt.Sprint(countingResult.TableNo) + " SettleBet Balance:" + fmt.Sprint(BetAccount.Balance) + " BetAmmount:" + fmt.Sprint(betRecord.BetAmmount) + " WinAmmount:" + fmt.Sprint(betRecord.WinAmmount) + " odd:" + fmt.Sprint(odd))
+			if countingResult.TableNo == 0 {
+				panic("TableNo=0")
+			}
 			PublishBet(betRecord)
 			PublishAccountBalance(BetAccount)
 		}
@@ -169,6 +177,11 @@ func SettleBet(countingResult *models.CountingResult) {
 		countingResult.HasBeted = false
 	}
 
+}
+
+func stopDubleBet(currentCountingResult *models.CountingResult) {
+	currentCountingResult.SuggestionBetAmount = currentCountingResult.DefaultBetAmount
+	currentCountingResult.NextBetDubleBet = false
 }
 
 //處理資料
@@ -181,7 +194,7 @@ func processData() {
 			tableCode := _tableResult.TableCode
 			jsonObj, err := simplejson.NewJson(_tableResult.JsonStr)
 			if err != nil {
-				beego.Error("simplejson.NewJson Error:", err.Error())
+				goutils.Logger.Error("simplejson.NewJson Error:", err.Error())
 				continue
 			}
 			//goutils.CheckErr(err)
@@ -195,7 +208,7 @@ func processData() {
 			//所有算法輪巡
 			for _, currentCountingResultInterface := range tableInfoMap[tableCode].CurrentCountingResultList {
 				currentCountingResult := currentCountingResultInterface.GetCountingResult()
-				//beego.Info(string(_tableResult.JsonStr))
+				//goutils.Logger.Info(string(_tableResult.JsonStr))
 				//gameStatus= 1=init 2=bet 3=dealing 4=resulting 5=end
 				if handCount == 1 && !currentCountingResult.HasInit {
 					//換靴 重算
@@ -208,8 +221,8 @@ func processData() {
 				}
 
 				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 && len(beadRoadDisplayList) >= handCount {
-					beego.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
-					beego.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)))
+					goutils.Logger.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
+					goutils.Logger.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)))
 					currentCountingResult.HasInit = false
 					currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
 					//若上一局有預測結果，要告知這一局的發牌結果 TransBetTypeToStr(roadPatternInfo.SuggestionBetType)
@@ -220,7 +233,7 @@ func processData() {
 							betTypeStr := fmt.Sprint(resultMap["betType"])
 
 							betType := jsonGameResult2BetType(resultStr, betTypeStr)
-							beego.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
+							goutils.Logger.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
 							if betType != models.Bcr_BETTYPE_NONE {
 								//取得結果
 								currentCountingResult.Result = betType
@@ -228,18 +241,32 @@ func processData() {
 									(currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_BANKER || currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_PLAYER))
 								currentCountingResult.FirstHand = (handCount == 1)
 								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
+								//要不要倍投?(第一局結果不要倍投)
+
+								if currentCountingResult.DubleBet && !currentCountingResult.FirstHand {
+									if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
+										//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
+										currentCountingResult.NextBetDubleBet = true
+									} else {
+										stopDubleBet(currentCountingResult)
+									}
+								} else {
+									stopDubleBet(currentCountingResult)
+								}
 
 								break
+							} else {
+								stopDubleBet(currentCountingResult)
 							}
 
 						}
 						if currentCountingResult.FirstHand {
-							beego.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
+							goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
 						} else {
-							beego.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
+							goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 							SettleBet(currentCountingResult)
 						}
-						PublishCountingResult(currentCountingResult) //公佈預測結果(有沒有猜中)
+						NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
 					}
 
@@ -258,9 +285,9 @@ func processData() {
 						p3 = -1
 					}
 
-					//beego.Info("JsonStr:", string(_tableResult.JsonStr))
+					//goutils.Logger.Info("JsonStr:", string(_tableResult.JsonStr))
 
-					beego.Info("B1~3,P1~3:", b1, b2, b3, p1, p2, p3)
+					goutils.Logger.Info("B1~3,P1~3:", b1, b2, b3, p1, p2, p3)
 					//算牌
 					cardList := [6]int{b1, b2, b3, p1, p2, p3}
 					for idx, barcode := range cardList {
@@ -276,10 +303,10 @@ func processData() {
 						for _, betType := range beadRoadDisplayList {
 							beadRoadBfr.WriteString(jsonBeadRoadCode2BetTypeStr(fmt.Sprint(betType)))
 							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
-							//beego.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
+							//goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
 						}
 						beadRoadStr = beadRoadBfr.String()
-						beego.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStr)
+						goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStr)
 
 					}
 
@@ -287,11 +314,11 @@ func processData() {
 					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadStr)
 					if gotResult {
 						//有預測結果了
-						beego.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
-						PublishCountingSuggest(currentCountingResult) //決定告知預測
+						goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
+						NotifySuggest(currentCountingResult) //決定告知預測
 					} else {
 						//這局沒有預測結果，清除上一期預測結果(已公布過的)
-						beego.Info("tableCode:" + tableCode + " 沒有預測結果 ClearGuessResult")
+						goutils.Logger.Info("tableCode:" + tableCode + " 沒有預測結果 ClearGuessResult")
 						currentCountingResultInterface.ClearGuessResult() //這裡會把剛剛要公布的結果也刪掉，所以這裡只清預測結果
 					}
 				}
@@ -300,6 +327,18 @@ func processData() {
 
 		}
 	}
+}
+
+//公佈預測結果(有沒有猜中)
+func NotifyGameResult(currentCountingResult *models.CountingResult) {
+	PublishCountingResult(currentCountingResult) //ws
+	//QQ
+}
+
+//決定告知預測
+func NotifySuggest(currentCountingResult *models.CountingResult) {
+	PublishCountingSuggest(currentCountingResult) //ws
+	//QQ
 }
 
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"
@@ -324,21 +363,21 @@ func fetchTableData(_tableInfo *tableInfo) {
 func connectTable(tableCode string) {
 
 	millisecond := fmt.Sprint((time.Now().UnixNano()))
-	//beego.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
+	//goutils.Logger.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
 	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
 	if err != nil {
-		beego.Error("connectTable Get:"+tableCode+" Error:", err.Error())
+		goutils.Logger.Error("connectTable Get:"+tableCode+" Error:", err.Error())
 	} else {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			beego.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
+			goutils.Logger.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
 		} else {
 			tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
 		}
 		//goutils.CheckErr(err)
 	}
 
-	//beego.Info("body:" + string(body))
+	//goutils.Logger.Info("body:" + string(body))
 
 }

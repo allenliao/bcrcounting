@@ -17,7 +17,6 @@ import (
 
 	"bcrcounting/models"
 
-	"github.com/astaxie/beego"
 	"github.com/bitly/go-simplejson"
 )
 
@@ -133,7 +132,7 @@ func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 		betRecord.BetTime = time.Now()
 		BetAccount.BetRecordList[GameIDDisplay] = betRecord
 		betRecord.CurrentBalance = BetAccount.Balance
-		beego.Info("PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance))
+		goutils.Logger.Info("TableNo:" + fmt.Sprint(countingResult.TableNo) + " PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance) + " BetAmmount:" + fmt.Sprint(betRecord.BetAmmount))
 		/*
 			BetTime        time.Time
 				BUCode         string
@@ -179,11 +178,6 @@ func SettleBet(countingResult *models.CountingResult) {
 
 }
 
-func stopDubleBet(currentCountingResult *models.CountingResult) {
-	currentCountingResult.SuggestionBetAmount = currentCountingResult.DefaultBetAmount
-	currentCountingResult.NextBetDubleBet = false
-}
-
 //處理資料
 //儲存結果
 //計算結果
@@ -202,7 +196,7 @@ func processData() {
 			gameIDDisplay, _ := jsonObj.Get("DCGameVO").Get("gameIDDisplay").String()
 			handCount, _ := jsonObj.Get("DCGameVO").Get("handCount").Int()
 			gameStatus, _ := jsonObj.Get("gameStatus").Int()
-			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array()
+			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array() //有時候gameStatus == 5 才有值
 			beadRoadDisplayList, _ := jsonObj.Get("allRoadDisplayList").Get("beadRoadDisplayList").Array()
 
 			//所有算法輪巡
@@ -217,58 +211,28 @@ func processData() {
 
 				//下注時間 且該桌有預測訊息 還沒被下過注
 				if gameStatus == 2 && currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE && !currentCountingResult.HasBeted {
-					PlaceBet(currentCountingResult, gameIDDisplay)
-				}
+					//若已經是第60局 又不是在追倍投 就建議不要下注了
+					if handCount >= 60 && !currentCountingResult.NextBetDubleBet {
+						goutils.Logger.Info("tableCode:" + tableCode + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
+					} else {
+						PlaceBet(currentCountingResult, gameIDDisplay)
+					}
 
-				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 && len(arrayOfGameResult) > 0 && len(beadRoadDisplayList) >= handCount {
-					goutils.Logger.Info("tableCode:" + tableCode + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
-					goutils.Logger.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)))
+				}
+				//FOR TEST
+				betRecord := BetAccount.BetRecordList[currentCountingResult.GameIDDisplay]
+				if betRecord.TableNo != 0 {
+					goutils.Logger.Info("tableCode:" + tableCode + " (out) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
+					goutils.Logger.Info("tableCode:" + tableCode + " (out) beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount))
+				}
+				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 {
+					goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetCard json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
+					goutils.Logger.Info("tableCode:" + tableCode + " beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount))
 					currentCountingResult.HasInit = false
+					currentCountingResult.GotCard = true
+					currentCountingResult.GotResult = false
 					currentCountingResult.GameIDDisplay = gameIDDisplay //標記算過了
 					//若上一局有預測結果，要告知這一局的發牌結果 TransBetTypeToStr(roadPatternInfo.SuggestionBetType)
-					if currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE {
-						for _, resultObj := range arrayOfGameResult {
-							resultMap, _ := resultObj.(map[string]interface{}) //要做斷言檢查才能使用
-							resultStr := fmt.Sprint(resultMap["result"])
-							betTypeStr := fmt.Sprint(resultMap["betType"])
-
-							betType := jsonGameResult2BetType(resultStr, betTypeStr)
-							goutils.Logger.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
-							if betType != models.Bcr_BETTYPE_NONE {
-								//取得結果
-								currentCountingResult.Result = betType
-								currentCountingResult.TieReturn = (currentCountingResult.Result == models.Bcr_BETTYPE_TIE &&
-									(currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_BANKER || currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_PLAYER))
-								currentCountingResult.FirstHand = (handCount == 1)
-								currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
-								//要不要倍投?(第一局結果不要倍投)
-
-								if currentCountingResult.DubleBet && !currentCountingResult.FirstHand {
-									if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
-										//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
-										currentCountingResult.NextBetDubleBet = true
-									} else {
-										stopDubleBet(currentCountingResult)
-									}
-								} else {
-									stopDubleBet(currentCountingResult)
-								}
-
-								break
-							} else {
-								stopDubleBet(currentCountingResult)
-							}
-
-						}
-						if currentCountingResult.FirstHand {
-							goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
-						} else {
-							goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
-							SettleBet(currentCountingResult)
-						}
-						NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
-
-					}
 
 					//取牌
 					b1, _ := jsonObj.Get("baccaratResultVO").Get("b1").Int()
@@ -289,11 +253,71 @@ func processData() {
 
 					goutils.Logger.Info("B1~3,P1~3:", b1, b2, b3, p1, p2, p3)
 					//算牌
+
 					cardList := [6]int{b1, b2, b3, p1, p2, p3}
 					for idx, barcode := range cardList {
 						cardList[idx] = barcode2point(barcode)
 					}
-					var beadRoadStr string
+					currentCountingResult.CardList = cardList
+
+				}
+
+				//取結果
+				//其實就是gameStatus=4/5 才會有機會len(arrayOfGameResult) > 0
+				if !currentCountingResult.GotResult && currentCountingResult.GotCard && currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE && len(arrayOfGameResult) > 0 {
+					goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetResult json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
+					//currentCountingResult.GotCard = false
+					//currentCountingResult.GotCard &&
+					currentCountingResult.GotResult = true
+					for _, resultObj := range arrayOfGameResult {
+						resultMap, _ := resultObj.(map[string]interface{}) //要做斷言檢查才能使用
+						resultStr := fmt.Sprint(resultMap["result"])
+						betTypeStr := fmt.Sprint(resultMap["betType"])
+
+						betType := jsonGameResult2BetType(resultStr, betTypeStr)
+						goutils.Logger.Info("tableCode:" + tableCode + " arrayOfGameResult resultStr:" + resultStr + " betTypeStr:" + betTypeStr)
+						if betType != models.Bcr_BETTYPE_NONE {
+							//取得結果
+							currentCountingResult.Result = betType
+							currentCountingResult.TieReturn = (currentCountingResult.Result == models.Bcr_BETTYPE_TIE &&
+								(currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_BANKER || currentCountingResult.SuggestionBet == models.Bcr_BETTYPE_PLAYER))
+							currentCountingResult.FirstHand = (handCount == 1)
+							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
+
+							//要不要倍投?(第一局結果不要倍投)
+							if currentCountingResult.DubleBet && !currentCountingResult.FirstHand {
+								if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
+									//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
+									currentCountingResult.NextBetDubleBet = true
+								} else {
+									currentCountingResult.StopDubleBet()
+								}
+							} else {
+								currentCountingResult.StopDubleBet()
+							}
+
+							break
+						} else {
+							currentCountingResult.StopDubleBet()
+						}
+
+					}
+					if currentCountingResult.FirstHand {
+						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
+					} else {
+						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
+						SettleBet(currentCountingResult)
+					}
+					NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
+
+				}
+
+				//取路紙
+				//其實就是gameStatus=4/5 才會有機會len(beadRoadDisplayList) >= handCount
+				if currentCountingResult.GotCard && len(beadRoadDisplayList) >= handCount {
+					goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetRoad json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
+					currentCountingResult.GotCard = false
+					//currentCountingResult.GotResult = false
 					//取路紙(珠盤路)
 					if beadRoadDisplayList != nil {
 						//beadRoadDisplayListLen := len(beadRoadDisplayList)
@@ -305,13 +329,13 @@ func processData() {
 							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
 							//goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
 						}
-						beadRoadStr = beadRoadBfr.String()
-						goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + beadRoadStr)
+						currentCountingResult.BeadRoadStr = beadRoadBfr.String()
+						goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + currentCountingResult.BeadRoadStr)
 
 					}
 
 					//餵牌 餵路紙 做計算
-					gotResult := currentCountingResultInterface.Counting(cardList, beadRoadStr)
+					gotResult := currentCountingResultInterface.Counting(currentCountingResult.CardList, currentCountingResult.BeadRoadStr)
 					if gotResult {
 						//有預測結果了
 						goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
@@ -339,6 +363,7 @@ func NotifyGameResult(currentCountingResult *models.CountingResult) {
 func NotifySuggest(currentCountingResult *models.CountingResult) {
 	PublishCountingSuggest(currentCountingResult) //ws
 	//QQ
+	PublishChanceResultToQQ(currentCountingResult)
 }
 
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"

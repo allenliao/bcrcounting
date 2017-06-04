@@ -125,6 +125,10 @@ type CountingResult struct {
 	DubleBet            bool //倍投
 	DubleBetWhenWin     bool //贏了倍投
 	NextBetDubleBet     bool //下一注倍投
+	GotCard             bool //拿到CardList了
+	GotResult           bool //拿到Result了
+	CardList            [6]int
+	BeadRoadStr         string
 }
 
 func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
@@ -143,6 +147,9 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.FirstHand = false
 	currentCountingResult.DubleBet = false
 	currentCountingResult.DubleBetWhenWin = false
+	currentCountingResult.NextBetDubleBet = false
+	currentCountingResult.GotCard = false
+	currentCountingResult.GotResult = false
 
 }
 
@@ -151,15 +158,23 @@ func (currentCountingResult *CountingResult) InitCustomField(BUCode string, tabl
 }
 
 func (currentCountingResult *CountingResult) InitChangShoeField() {
-	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
+	currentCountingResult.ClearGuessResult()
+	currentCountingResult.StopDubleBet()
 }
 
 //Type繼承CountingResult的 model都可以用?
+//該桌當局RESULT沒預測結果時會執行
 func (currentCountingResult *CountingResult) ClearGuessResult() {
 	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
 	//currentCountingResult.Result = ""
 	//currentCountingResult.GuessResult = false
 	//currentCountingResult.TieReturn = false
+}
+
+//取結果時 依具Method設定的參數 或 上一次沒有預測 時會執行
+func (currentCountingResult *CountingResult) StopDubleBet() {
+	currentCountingResult.SuggestionBetAmount = currentCountingResult.DefaultBetAmount
+	currentCountingResult.NextBetDubleBet = false
 }
 func (currentCountingResult *CountingResult) Counting(cardList [6]int, beadRoadStr string) bool {
 	return false

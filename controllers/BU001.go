@@ -11,6 +11,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"fmt"
@@ -21,12 +23,13 @@ import (
 )
 
 var (
-	BUCode       string
-	tableInfoMap map[string]*tableInfo
-	tableAmount  uint8
-	tableResult  chan TableInitJsonStr
-	BetAccount   *models.SimBetAccount
-	Odds         map[uint8]float64 //賠率
+	BUCode              string
+	tableInfoMap        map[string]*tableInfo
+	tableAmount         uint8
+	tableResult         chan TableInitJsonStr
+	BetAccount          *models.SimBetAccount
+	Odds                map[uint8]float64                //賠率
+	connectTableTimeout = time.Duration(2 * time.Second) //超過2秒沒回應就TIMEOUT
 )
 
 type tableInfo struct {
@@ -34,7 +37,8 @@ type tableInfo struct {
 	TableNo                   uint8
 	CurrentCountingResultList map[string]models.CountingResultInterface //紀錄賽局結果
 	bankerPayout              int8
-
+	bodyStr                   string //從HTTP.GET 取得的 內容
+	client                    *http.Client
 	//CurrentCountingResultMethod1 *models.CountingResultMethod1 //紀錄方法1的決策結果
 	//CurrentCountingResultMethod2 *models.CountingResultMethod2 //紀錄方法2的決策結果
 }
@@ -119,13 +123,14 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 
 //下注
 func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
-	countingResult.HasBeted = true
+
 	betamount := countingResult.SuggestionBetAmount
 	if BetAccount.Balance > betamount {
+		countingResult.HasBeted = true
 		BetAccount.Balance -= betamount
 
 		betRecord := models.BetRecord{BUCode: countingResult.BUCode, TableNo: countingResult.TableNo, Settled: false}
-		betRecord.BetAmmount = countingResult.SuggestionBetAmount
+		betRecord.BetAmmount = betamount
 		betRecord.BetType = countingResult.SuggestionBet
 		betRecord.BetTypeStr = models.TransBetTypeToStr(countingResult.SuggestionBet)
 		betRecord.GameIDDisplay = GameIDDisplay
@@ -147,6 +152,7 @@ func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 		PublishAccountBalance(BetAccount)
 	} else {
 		//錢不夠
+		countingResult.HasBeted = false
 	}
 
 }
@@ -199,6 +205,9 @@ func processData() {
 			arrayOfGameResult, _ := jsonObj.Get("arrayOfGameResult").Array() //有時候gameStatus == 5 才有值
 			beadRoadDisplayList, _ := jsonObj.Get("allRoadDisplayList").Get("beadRoadDisplayList").Array()
 
+			millisecond := fmt.Sprint((time.Now().UnixNano()))
+			goutils.Logger.Info("收到:" + tableCode + " t:" + millisecond)
+
 			//所有算法輪巡
 			for _, currentCountingResultInterface := range tableInfoMap[tableCode].CurrentCountingResultList {
 				currentCountingResult := currentCountingResultInterface.GetCountingResult()
@@ -215,15 +224,17 @@ func processData() {
 					if handCount >= 60 && !currentCountingResult.NextBetDubleBet {
 						goutils.Logger.Info("tableCode:" + tableCode + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
 					} else {
+						goutils.Logger.Info("tableCode:" + tableCode + " (PlaceBet) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
+						goutils.Logger.Info("tableCode:" + tableCode + " (PlaceBet) beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount))
 						PlaceBet(currentCountingResult, gameIDDisplay)
 					}
 
 				}
 				//FOR TEST
-				betRecord := BetAccount.BetRecordList[currentCountingResult.GameIDDisplay]
+				betRecord := BetAccount.BetRecordList[gameIDDisplay]
 				if betRecord.TableNo != 0 {
-					goutils.Logger.Info("tableCode:" + tableCode + " (out) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
-					goutils.Logger.Info("tableCode:" + tableCode + " (out) beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount))
+					goutils.Logger.Info("tableCode:" + tableCode + " (out) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " currentCountingResult.gameIDDisplay:" + currentCountingResult.GameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
+					goutils.Logger.Info("tableCode:" + tableCode + " (out) beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " arrayOfGameResult.len:" + fmt.Sprint(len(arrayOfGameResult)))
 				}
 				if gameIDDisplay != currentCountingResult.GameIDDisplay && gameStatus == 4 {
 					goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetCard json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
@@ -284,8 +295,8 @@ func processData() {
 							currentCountingResult.FirstHand = (handCount == 1)
 							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
-							//要不要倍投?(第一局結果不要倍投)
-							if currentCountingResult.DubleBet && !currentCountingResult.FirstHand {
+							//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
+							if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
 								if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
 									//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
 									currentCountingResult.NextBetDubleBet = true
@@ -314,36 +325,40 @@ func processData() {
 
 				//取路紙
 				//其實就是gameStatus=4/5 才會有機會len(beadRoadDisplayList) >= handCount
-				if currentCountingResult.GotCard && len(beadRoadDisplayList) >= handCount {
-					goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetRoad json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
-					currentCountingResult.GotCard = false
-					//currentCountingResult.GotResult = false
-					//取路紙(珠盤路)
-					if beadRoadDisplayList != nil {
-						//beadRoadDisplayListLen := len(beadRoadDisplayList)
-						//beadRoadStrList := make([]int, beadRoadDisplayListLen)
-						var beadRoadBfr bytes.Buffer
+				if currentCountingResult.GotCard {
+					gameIDDisplayHand, _ := strconv.ParseInt(GetGameIDDisplayHand(currentCountingResult.GameIDDisplay), 10, 64)
+					goutils.Logger.Info("tableCode:" + tableCode + " gameIDDisplayHand:" + fmt.Sprint(gameIDDisplayHand) + "checkGetRoad len(beadRoadDisplayList):" + fmt.Sprint(len(beadRoadDisplayList)))
+					if int64(len(beadRoadDisplayList)) == gameIDDisplayHand {
+						goutils.Logger.Info("tableCode:" + tableCode + " TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " GetRoad json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus))
+						currentCountingResult.GotCard = false
+						//currentCountingResult.GotResult = false
+						//取路紙(珠盤路)
+						if beadRoadDisplayList != nil {
+							//beadRoadDisplayListLen := len(beadRoadDisplayList)
+							//beadRoadStrList := make([]int, beadRoadDisplayListLen)
+							var beadRoadBfr bytes.Buffer
 
-						for _, betType := range beadRoadDisplayList {
-							beadRoadBfr.WriteString(jsonBeadRoadCode2BetTypeStr(fmt.Sprint(betType)))
-							//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
-							//goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
+							for _, betType := range beadRoadDisplayList {
+								beadRoadBfr.WriteString(jsonBeadRoadCode2BetTypeStr(fmt.Sprint(betType)))
+								//betType, _ := betType.(map[string]interface{}) //要做斷言檢查才能使用
+								//goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路[" + fmt.Sprint(idx) + "]:" + fmt.Sprint(betType))
+							}
+							currentCountingResult.BeadRoadStr = beadRoadBfr.String()
+							goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + currentCountingResult.BeadRoadStr)
+
 						}
-						currentCountingResult.BeadRoadStr = beadRoadBfr.String()
-						goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + currentCountingResult.BeadRoadStr)
 
-					}
-
-					//餵牌 餵路紙 做計算
-					gotResult := currentCountingResultInterface.Counting(currentCountingResult.CardList, currentCountingResult.BeadRoadStr)
-					if gotResult {
-						//有預測結果了
-						goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
-						NotifySuggest(currentCountingResult) //決定告知預測
-					} else {
-						//這局沒有預測結果，清除上一期預測結果(已公布過的)
-						goutils.Logger.Info("tableCode:" + tableCode + " 沒有預測結果 ClearGuessResult")
-						currentCountingResultInterface.ClearGuessResult() //這裡會把剛剛要公布的結果也刪掉，所以這裡只清預測結果
+						//餵牌 餵路紙 做計算
+						gotResult := currentCountingResultInterface.Counting(currentCountingResult.CardList, currentCountingResult.BeadRoadStr)
+						if gotResult {
+							//有預測結果了
+							goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
+							NotifySuggest(currentCountingResult) //決定告知預測
+						} else {
+							//這局沒有預測結果，清除上一期預測結果(已公布過的)
+							goutils.Logger.Info("tableCode:" + tableCode + " 沒有預測結果 ClearGuessResult")
+							currentCountingResultInterface.ClearGuessResult() //這裡會把剛剛要公布的結果也刪掉，所以這裡只清預測結果
+						}
 					}
 				}
 
@@ -351,6 +366,16 @@ func processData() {
 
 		}
 	}
+}
+
+func GetGameIDDisplayHand(gameIDDisplay string) string {
+
+	strArr := strings.Split(gameIDDisplay, "-")
+	result := "0"
+	if len(strArr) == 4 {
+		result = strArr[3]
+	}
+	return result
 }
 
 //公佈預測結果(有沒有猜中)
@@ -363,16 +388,17 @@ func NotifyGameResult(currentCountingResult *models.CountingResult) {
 func NotifySuggest(currentCountingResult *models.CountingResult) {
 	PublishCountingSuggest(currentCountingResult) //ws
 	//QQ
-	PublishChanceResultToQQ(currentCountingResult)
+	PublishChanceResultToQQ(currentCountingResult, BetAccount)
 }
 
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"
 func fetchTableData(_tableInfo *tableInfo) {
 	tableCode := _tableInfo.TableCode
 
-	//var duration time.Duration = 1 //1 秒取一次
-	//for _ = range time.Tick(duration * time.Second) {
+	////var duration time.Duration = 1 //1 秒取一次
+	////for _ = range time.Tick(duration * time.Second) {
 	ticker := time.NewTicker(time.Millisecond * 200)
+	tableInfoMap[tableCode].client = &http.Client{Timeout: connectTableTimeout}
 	for _ = range ticker.C {
 		/*
 			timestamp := time.Now().Local()
@@ -380,7 +406,7 @@ func fetchTableData(_tableInfo *tableInfo) {
 			fmt.Println(str)
 		*/
 
-		connectTable(tableCode)
+		connectTable(tableCode) //改成自己跑遞回...會吃掉所有記憶體
 	}
 }
 
@@ -389,16 +415,27 @@ func connectTable(tableCode string) {
 
 	millisecond := fmt.Sprint((time.Now().UnixNano()))
 	//goutils.Logger.Info("connectTable TableCode:" + tableCode + " time.Millisecond:" + millisecond)
-	resp, err := http.Get("http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond)
+	urlStr := "http://spi.mld.v9vnb.org/GetData.ashx?tablecode=" + tableCode + "&valuetype=INIT&t=" + millisecond
+	client := tableInfoMap[tableCode].client
+	resp, err := client.Get(urlStr)
 	if err != nil {
 		goutils.Logger.Error("connectTable Get:"+tableCode+" Error:", err.Error())
+		//connectTable(tableCode) //改成自己跑遞回...會吃掉所有記憶體
 	} else {
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			goutils.Logger.Error("connectTable ReadAll:"+tableCode+" Error:", err.Error())
+			//connectTable(tableCode) //改成自己跑遞回...會吃掉所有記憶體
 		} else {
-			tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
+			bodyStr := string(body)
+			if tableInfoMap[tableCode].bodyStr != bodyStr { //內容變了在處理
+				tableInfoMap[tableCode].bodyStr = bodyStr
+				goutils.Logger.Info("送出:" + tableCode + " t:" + millisecond)
+				tableResult <- TableInitJsonStr{TableCode: tableCode, JsonStr: body} //傳資料出去
+			}
+			goutils.Logger.Info("connectTable Get:" + tableCode + " t:" + millisecond)
+			//connectTable(tableCode) //改成自己跑遞回...會吃掉所有記憶體
 		}
 		//goutils.CheckErr(err)
 	}

@@ -35,18 +35,19 @@ var BetTypeCount uint8 = 5
 
 //百家樂第一種計算方法
 //紀錄每一張牌，並計算出每種Bet type的賭場優勢的影響
+//不符成本效益，放棄此算法
 
 func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]CountingResultInterface {
-	cardCountingMethod := CountingResultMethod1{}
+	//cardCountingMethod := CountingResultMethod1{}//不符成本效益，放棄此算法
 	longtrendMethod := CountingResultMethod2{}
-	cardCountingMethod_addr := &cardCountingMethod
+	//cardCountingMethod_addr := &cardCountingMethod//不符成本效益，放棄此算法
 	longtrendMethod_addr := &longtrendMethod
 	//methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
 
 	//注冊算法
 	currentCountingResultList := map[string]CountingResultInterface{
-		"cardCounting": cardCountingMethod_addr,
-		"longtrend":    longtrendMethod_addr}
+		//"cardCounting": cardCountingMethod_addr,//不符成本效益，放棄此算法
+		"longtrend": longtrendMethod_addr}
 
 	for _, methodObj_addr := range currentCountingResultList {
 		//methodObj.InitBaseField(BUCode, tableNo)
@@ -317,11 +318,11 @@ type RoadPatternInfo struct {
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.MethodID = "M2"
-	currentCountingResult.MethodName = "連7斬龍"
+	currentCountingResult.MethodName = "連8斬龍" //連7斬龍 >>1個禮拜24小時不間斷 失敗過一次連18龍 平均一天24H 賺2500~3000
 	currentCountingResult.DubleBet = true
 	currentCountingResult.DubleBetWhenWin = false //輸了倍投
-	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "0000000", SuggestionBetType: 1, PatternName: "長莊"}
-	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "1111111", SuggestionBetType: 0, PatternName: "長閒"}
+	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "00000000", SuggestionBetType: 1, PatternName: "長莊"}
+	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "11111111", SuggestionBetType: 0, PatternName: "長閒"}
 	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
 	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
 

@@ -12,8 +12,12 @@ import (
 )
 
 //QQ發佈長龍通知
-func PublishChanceResultToQQ(_countingSuggest *models.CountingResult) {
-	Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " (" + _countingSuggest.TrendName + ")"
+func PublishChanceResultToQQ(_countingSuggest *models.CountingResult, _betAccount *models.SimBetAccount) {
+	//Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " (" + _countingSuggest.TrendName + ")"
+	SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
+	//SuggestionBetAmountMultipleStr := "$" + fmt.Sprint(_countingSuggest.SuggestionBetAmount/_countingSuggest.DefaultBetAmount)
+	SuggestionBetAmountStr := "$" + fmt.Sprint(_countingSuggest.SuggestionBetAmount)
+	Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " " + SuggestionBetAmountStr + " 帳戶餘額:" + fmt.Sprint(_betAccount.Balance)
 	sendMsgToQQGroup(Message)
 }
 

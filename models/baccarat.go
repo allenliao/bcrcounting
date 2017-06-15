@@ -105,6 +105,8 @@ type CountingResultInterface interface {
 	ClearGuessResult()
 	InitChangShoeField()
 	GetCountingResult() *CountingResult
+	isNeedPlaceBet() bool
+	isNeedPlaceNextBet() bool
 }
 
 type CountingResult struct {
@@ -152,6 +154,27 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.GotCard = false
 	currentCountingResult.GotResult = false
 
+}
+
+//檢查這一局要不要下 順便和 isNeedPlaceNextBet 配合做初始化動作 呼叫時間點在下注狀態時
+func (currentCountingResult *CountingResult) isNeedPlaceBet(handCount int) bool {
+	return handCount >= 60 && !currentCountingResult.NextBetDubleBet
+}
+
+//決定這下一局要不要下 順便和 isNeedPlaceBet 配合做初始化動作 呼叫時間點在取得到RESULT時
+func (currentCountingResult *CountingResult) isNeedPlaceNextBet() {
+	//決定下一注要不要倍投
+	//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
+	if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
+		if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
+			//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
+			currentCountingResult.NextBetDubleBet = true
+		} else {
+			currentCountingResult.StopDubleBet()
+		}
+	} else {
+		currentCountingResult.StopDubleBet()
+	}
 }
 
 func (currentCountingResult *CountingResult) InitCustomField(BUCode string, tableNo uint8) {
@@ -318,7 +341,9 @@ type RoadPatternInfo struct {
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.MethodID = "M2"
-	currentCountingResult.MethodName = "連8斬龍" //連7斬龍 >>1個禮拜24小時不間斷 失敗過一次連18龍 平均一天24H 賺2500~3000
+	currentCountingResult.MethodName = "連6斬龍 倍投 2000止損" //上次下注金額>=1600 就放棄屠龍認賠3100
+	//連7斬龍 >>1個禮拜24小時不間斷 失敗過一次連18龍 平均一天24H 賺2500~3000
+	//連8斬龍 >>2天24小時不間斷 失敗過一次兩桌同時連15龍以上，錢不夠作倍投
 	currentCountingResult.DubleBet = true
 	currentCountingResult.DubleBetWhenWin = false //輸了倍投
 	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "00000000", SuggestionBetType: 1, PatternName: "長莊"}

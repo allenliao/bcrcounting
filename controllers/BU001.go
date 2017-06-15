@@ -220,8 +220,10 @@ func processData() {
 
 				//下注時間 且該桌有預測訊息 還沒被下過注
 				if gameStatus == 2 && currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE && !currentCountingResult.HasBeted {
+					//決定要不要投注 TODO:移到currentCountingResult中做判斷
 					//若已經是第60局 又不是在追倍投 就建議不要下注了
-					if handCount >= 60 && !currentCountingResult.NextBetDubleBet {
+					if currentCountingResult.isNeedPlaceBet(handCount) {
+						//if handCount >= 60 && !currentCountingResult.NextBetDubleBet {
 						goutils.Logger.Info("tableCode:" + tableCode + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
 					} else {
 						goutils.Logger.Info("tableCode:" + tableCode + " (PlaceBet) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
@@ -295,17 +297,8 @@ func processData() {
 							currentCountingResult.FirstHand = (handCount == 1)
 							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
-							//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
-							if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
-								if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
-									//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
-									currentCountingResult.NextBetDubleBet = true
-								} else {
-									currentCountingResult.StopDubleBet()
-								}
-							} else {
-								currentCountingResult.StopDubleBet()
-							}
+							//決定下一注要不要倍投
+							currentCountingResult.isNeedPlaceNextBet() //需呼叫在GuessResult決定之後
 
 							break
 						} else {

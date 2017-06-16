@@ -27,7 +27,6 @@ var (
 	tableInfoMap        map[string]*tableInfo
 	tableAmount         uint8
 	tableResult         chan TableInitJsonStr
-	BetAccount          *models.SimBetAccount
 	Odds                map[uint8]float64                //賠率
 	connectTableTimeout = time.Duration(2 * time.Second) //超過2秒沒回應就TIMEOUT
 )
@@ -49,15 +48,8 @@ type TableInitJsonStr struct {
 }
 
 func InitBU() {
-	LoginBetAccount()
 	InitTableInfo()
 	StartProcess()
-}
-func LoginBetAccount() {
-	BetAccount = &models.SimBetAccount{Balance: 100000}
-	BetAccount.LoginTime = time.Now()
-	BetAccount.BetRecordList = make(map[string]models.BetRecord)
-	PublishAccountBalance(BetAccount)
 }
 
 //初始化變數 create Table Info
@@ -123,43 +115,40 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 
 //下注
 func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
-
+	//走到這裡都是確定要下注了
 	betamount := countingResult.SuggestionBetAmount
-	if BetAccount.Balance > betamount {
-		countingResult.HasBeted = true
-		BetAccount.Balance -= betamount
 
-		betRecord := models.BetRecord{BUCode: countingResult.BUCode, TableNo: countingResult.TableNo, Settled: false}
-		betRecord.BetAmmount = betamount
-		betRecord.BetType = countingResult.SuggestionBet
-		betRecord.BetTypeStr = models.TransBetTypeToStr(countingResult.SuggestionBet)
-		betRecord.GameIDDisplay = GameIDDisplay
-		betRecord.BetTime = time.Now()
-		BetAccount.BetRecordList[GameIDDisplay] = betRecord
-		betRecord.CurrentBalance = BetAccount.Balance
-		goutils.Logger.Info("TableNo:" + fmt.Sprint(countingResult.TableNo) + " PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance) + " BetAmmount:" + fmt.Sprint(betRecord.BetAmmount))
-		/*
-			BetTime        time.Time
-				BUCode         string
-				TableNo        uint8
-				GameIDDisplay  string //局號
-				GameResultType uint8
-				BetType        uint8
-				BetAmmount     float64
-		*/
+	BetAccount := countingResult.BetAccount
+	BetAccount.Balance -= betamount
 
-		PublishBet(betRecord)
-		PublishAccountBalance(BetAccount)
-	} else {
-		//錢不夠
-		countingResult.HasBeted = false
-	}
+	betRecord := models.BetRecord{BUCode: countingResult.BUCode, TableNo: countingResult.TableNo, Settled: false}
+	betRecord.BetAmmount = betamount
+	betRecord.BetType = countingResult.SuggestionBet
+	betRecord.BetTypeStr = models.TransBetTypeToStr(countingResult.SuggestionBet)
+	betRecord.GameIDDisplay = GameIDDisplay
+	betRecord.BetTime = time.Now()
+	BetAccount.BetRecordList[GameIDDisplay] = betRecord
+	betRecord.CurrentBalance = BetAccount.Balance
+	goutils.Logger.Info("TableNo:" + fmt.Sprint(countingResult.TableNo) + " PlaceBet Balance:" + fmt.Sprint(BetAccount.Balance) + " BetAmmount:" + fmt.Sprint(betRecord.BetAmmount))
+	/*
+		BetTime        time.Time
+			BUCode         string
+			TableNo        uint8
+			GameIDDisplay  string //局號
+			GameResultType uint8
+			BetType        uint8
+			BetAmmount     float64
+	*/
+
+	PublishBet(betRecord)
+	//PublishAccountBalance(BetAccount)
 
 }
 
 //派彩
 func SettleBet(countingResult *models.CountingResult) {
 	if countingResult.HasBeted {
+		BetAccount := countingResult.BetAccount
 		betRecord := BetAccount.BetRecordList[countingResult.GameIDDisplay]
 		betRecord.GameResultType = countingResult.Result
 		betRecord.GameResultTypeStr = models.TransBetTypeToStr(betRecord.GameResultType)
@@ -176,7 +165,7 @@ func SettleBet(countingResult *models.CountingResult) {
 				panic("TableNo=0")
 			}
 			PublishBet(betRecord)
-			PublishAccountBalance(BetAccount)
+			//PublishAccountBalance(BetAccount)
 		}
 
 		countingResult.HasBeted = false
@@ -222,7 +211,7 @@ func processData() {
 				if gameStatus == 2 && currentCountingResult.SuggestionBet != models.Bcr_BETTYPE_NONE && !currentCountingResult.HasBeted {
 					//決定要不要投注 TODO:移到currentCountingResult中做判斷
 					//若已經是第60局 又不是在追倍投 就建議不要下注了
-					if currentCountingResult.isNeedPlaceBet(handCount) {
+					if !currentCountingResult.IsNeedPlaceBet(handCount) {
 						//if handCount >= 60 && !currentCountingResult.NextBetDubleBet {
 						goutils.Logger.Info("tableCode:" + tableCode + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
 					} else {
@@ -233,7 +222,7 @@ func processData() {
 
 				}
 				//FOR TEST
-				betRecord := BetAccount.BetRecordList[gameIDDisplay]
+				betRecord := currentCountingResult.BetAccount.BetRecordList[gameIDDisplay]
 				if betRecord.TableNo != 0 {
 					goutils.Logger.Info("tableCode:" + tableCode + " (out) TypeOf:" + fmt.Sprint(reflect.TypeOf(currentCountingResultInterface)) + " json.gameIDDisplay:" + gameIDDisplay + " currentCountingResult.gameIDDisplay:" + currentCountingResult.GameIDDisplay + " gameStatus:" + fmt.Sprint(gameStatus) + " currentCountingResult.SuggestionBetStr:" + models.TransBetTypeToStr(currentCountingResult.SuggestionBet))
 					goutils.Logger.Info("tableCode:" + tableCode + " (out) beadRoadDisplayList.len:" + fmt.Sprint(len(beadRoadDisplayList)) + " handCount:" + fmt.Sprint(handCount) + " arrayOfGameResult.len:" + fmt.Sprint(len(arrayOfGameResult)))
@@ -298,7 +287,7 @@ func processData() {
 							currentCountingResult.GuessResult = currentCountingResult.Result == currentCountingResult.SuggestionBet
 
 							//決定下一注要不要倍投
-							currentCountingResult.isNeedPlaceNextBet() //需呼叫在GuessResult決定之後
+							currentCountingResult.IsNeedPlaceNextBet() //需呼叫在GuessResult決定之後
 
 							break
 						} else {
@@ -340,9 +329,12 @@ func processData() {
 							goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + currentCountingResult.BeadRoadStr)
 
 						}
-
+						_isKeepPreviousSuggestion := currentCountingResultInterface.IsKeepPreviousSuggestion()
 						//餵牌 餵路紙 做計算
 						gotResult := currentCountingResultInterface.Counting(currentCountingResult.CardList, currentCountingResult.BeadRoadStr)
+						if _isKeepPreviousSuggestion {
+							gotResult = _isKeepPreviousSuggestion
+						}
 						if gotResult {
 							//有預測結果了
 							goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
@@ -381,7 +373,7 @@ func NotifyGameResult(currentCountingResult *models.CountingResult) {
 func NotifySuggest(currentCountingResult *models.CountingResult) {
 	PublishCountingSuggest(currentCountingResult) //ws
 	//QQ
-	PublishChanceResultToQQ(currentCountingResult, BetAccount)
+	PublishChanceResultToQQ(currentCountingResult, currentCountingResult.BetAccount)
 }
 
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"

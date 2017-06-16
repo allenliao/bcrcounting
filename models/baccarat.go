@@ -105,8 +105,9 @@ type CountingResultInterface interface {
 	ClearGuessResult()
 	InitChangShoeField()
 	GetCountingResult() *CountingResult
-	isNeedPlaceBet() bool
-	isNeedPlaceNextBet() bool
+	IsNeedPlaceBet(handCount int) bool
+	IsNeedPlaceNextBet()
+	IsKeepPreviousSuggestion() bool
 }
 
 type CountingResult struct {
@@ -132,6 +133,7 @@ type CountingResult struct {
 	GotResult           bool //拿到Result了
 	CardList            [6]int
 	BeadRoadStr         string
+	BetAccount          *SimBetAccount
 }
 
 func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
@@ -156,25 +158,19 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 
 }
 
+//是否保留上一局的 建議，不理會這一局的 建議
+func (currentCountingResult *CountingResult) IsKeepPreviousSuggestion() bool {
+	return false
+
+}
+
 //檢查這一局要不要下 順便和 isNeedPlaceNextBet 配合做初始化動作 呼叫時間點在下注狀態時
-func (currentCountingResult *CountingResult) isNeedPlaceBet(handCount int) bool {
-	return handCount >= 60 && !currentCountingResult.NextBetDubleBet
+func (currentCountingResult *CountingResult) IsNeedPlaceBet(handCount int) bool {
+	return false
 }
 
 //決定這下一局要不要下 順便和 isNeedPlaceBet 配合做初始化動作 呼叫時間點在取得到RESULT時
-func (currentCountingResult *CountingResult) isNeedPlaceNextBet() {
-	//決定下一注要不要倍投
-	//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
-	if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
-		if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
-			//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
-			currentCountingResult.NextBetDubleBet = true
-		} else {
-			currentCountingResult.StopDubleBet()
-		}
-	} else {
-		currentCountingResult.StopDubleBet()
-	}
+func (currentCountingResult *CountingResult) IsNeedPlaceNextBet() {
 }
 
 func (currentCountingResult *CountingResult) InitCustomField(BUCode string, tableNo uint8) {
@@ -351,10 +347,39 @@ func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
 	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
 
+	currentCountingResult.BetAccount = &SimBetAccount{Balance: 100000, MaxLoseLimit: 3200}
+	currentCountingResult.BetAccount.initBetAccount()
+
 }
 
-//用字串搜尋的 方法
-func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadStr string) bool {
+//檢查這一局要不要下 順便和 isNeedPlaceNextBet 配合做初始化動作 呼叫時間點在下注狀態時
+func (currentCountingResult *CountingResultMethod2) IsNeedPlaceBet(handCount int) bool {
+	//若已經是第60局 又不是在追倍投 就建議不要下注了
+	currentCountingResult.HasBeted = !(handCount >= 60 &&
+		!currentCountingResult.NextBetDubleBet) &&
+		currentCountingResult.BetAccount.Balance > currentCountingResult.SuggestionBetAmount
+	return currentCountingResult.HasBeted
+}
+
+//決定這下一局要不要下 順便和 isNeedPlaceBet 配合做初始化動作 呼叫時間點在取得到RESULT時
+func (currentCountingResult *CountingResultMethod2) IsNeedPlaceNextBet() {
+	//決定下一注要不要倍投
+	//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
+	if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
+		if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
+			//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
+			currentCountingResult.NextBetDubleBet = true
+			currentCountingResult.BetAccount.ContinueBetAmount += currentCountingResult.SuggestionBetAmount //在這裡記錄
+		} else {
+			currentCountingResult.StopDubleBet()
+		}
+	} else {
+		currentCountingResult.StopDubleBet()
+	}
+}
+
+//是否維持注上一局的 下注，不理會算牌結果
+func (currentCountingResult *CountingResultMethod2) IsKeepPreviousSuggestion() bool {
 	result := false
 
 	if currentCountingResult.NextBetDubleBet {
@@ -365,9 +390,13 @@ func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, be
 		}
 
 		result = true
-		return result
 	}
+	return result
+}
 
+//用字串搜尋的 方法
+func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, beadRoadStr string) bool {
+	result := false
 	for _, roadPatternInfo := range currentCountingResult.RoadPatternInfoList {
 		Pattern := roadPatternInfo.Pattern
 		var endIdx = len(beadRoadStr) - len(Pattern)

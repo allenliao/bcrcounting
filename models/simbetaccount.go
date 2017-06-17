@@ -20,19 +20,11 @@ import (
 
 //模擬下注的 帳號
 type SimBetAccount struct {
-	Balance           float64
-	LoginTime         time.Time
-	LogoutTime        time.Time
-	ContinueBetAmount float64 //累進下注金額
-	MaxLoseLimit      float64 //最大累進損失金額
-	BetRecordList     map[string]BetRecord
-}
+	Balance    float64
+	LoginTime  time.Time
+	LogoutTime time.Time
 
-func (BetAccount *SimBetAccount) initBetAccount() {
-
-	BetAccount.LoginTime = time.Now()
-	BetAccount.BetRecordList = make(map[string]BetRecord)
-	//PublishAccountBalance(BetAccount)
+	BetRecordList map[string]BetRecord
 }
 
 type BetRecord struct {

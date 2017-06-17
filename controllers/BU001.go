@@ -58,7 +58,9 @@ func LoginBetAccount() {
 	BetAccount = &models.SimBetAccount{Balance: 10000}
 	BetAccount.LoginTime = time.Now()
 	BetAccount.BetRecordList = make(map[string]models.BetRecord)
-	PublishAccountBalance(BetAccount)
+	BetAccount.TotalBetStatistic = &models.BetStatistic{StartTime: time.Now()}
+	BetAccount.SubBetStatistic = &models.BetStatistic{StartTime: time.Now()}
+	NotifyCurrentBalance()
 }
 
 //初始化變數 create Table Info
@@ -83,6 +85,13 @@ func StartProcess() {
 	go processData()
 	for _, tableInfo := range tableInfoMap {
 		go fetchTableData(tableInfo) //TODO: HARD CODE
+	}
+
+	ticker := time.NewTicker(time.Hour * 24)
+	//NotifyCurrentBetStatistic()
+	for _ = range ticker.C {
+		NotifyCurrentBetStatistic()
+		ResetBetStatistic()
 	}
 }
 
@@ -122,6 +131,50 @@ func jsonGameResult2BetType(result, betType string) uint8 {
 	return models.Bcr_BETTYPE_NONE
 }
 
+func CalPlaceBetStatistic(betAmount float64) {
+	BetAccount.SubBetStatistic.BetCount++
+	BetAccount.SubBetStatistic.AccumulateBetAmount += betAmount
+	BetAccount.SubBetStatistic.TotalWinAmount -= betAmount
+
+	BetAccount.TotalBetStatistic.BetCount++
+	BetAccount.TotalBetStatistic.AccumulateBetAmount += betAmount
+	BetAccount.TotalBetStatistic.TotalWinAmount -= betAmount
+}
+
+func CalResultStatistic(countingResult *models.CountingResult) {
+	if countingResult.HasBeted {
+		if countingResult.Result == models.Bcr_BETTYPE_TIE {
+			BetAccount.SubBetStatistic.TieBetCount++
+			BetAccount.SubBetStatistic.TotalWinAmount += countingResult.WinAmmount
+
+			BetAccount.TotalBetStatistic.TieBetCount++
+			BetAccount.TotalBetStatistic.TotalWinAmount += countingResult.WinAmmount
+		} else {
+			if countingResult.GuessResult {
+				BetAccount.SubBetStatistic.WinBetCount++
+				BetAccount.SubBetStatistic.TotalWinAmount += countingResult.WinAmmount
+
+				BetAccount.TotalBetStatistic.WinBetCount++
+				BetAccount.TotalBetStatistic.TotalWinAmount += countingResult.WinAmmount
+			} else {
+				BetAccount.SubBetStatistic.LoseBetCount++
+
+				BetAccount.TotalBetStatistic.LoseBetCount++
+			}
+		}
+	}
+}
+
+func ResetBetStatistic() {
+	BetAccount.SubBetStatistic.BetCount = 0
+	BetAccount.SubBetStatistic.AccumulateBetAmount = 0
+	BetAccount.SubBetStatistic.TotalWinAmount = 0
+	BetAccount.SubBetStatistic.TieBetCount = 0
+	BetAccount.SubBetStatistic.WinBetCount = 0
+	BetAccount.SubBetStatistic.LoseBetCount = 0
+	BetAccount.SubBetStatistic.StartTime = time.Now()
+}
+
 //下注
 func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 	//走到這裡都是確定要下注了
@@ -147,9 +200,9 @@ func PlaceBet(countingResult *models.CountingResult, GameIDDisplay string) {
 			BetType        uint8
 			BetAmmount     float64
 	*/
+	CalPlaceBetStatistic(betamount)
 
-	PublishBet(betRecord)
-	PublishAccountBalance(BetAccount)
+	NotifyBetRecord(betRecord)
 
 }
 
@@ -163,6 +216,7 @@ func SettleBet(countingResult *models.CountingResult) {
 			odd := Odds[countingResult.Result]
 			betRecord.Settled = true
 			betRecord.WinAmmount = odd * betRecord.BetAmmount
+			countingResult.WinAmmount = betRecord.WinAmmount
 
 			BetAccount.Balance += betRecord.WinAmmount
 			betRecord.CurrentBalance = BetAccount.Balance
@@ -171,8 +225,8 @@ func SettleBet(countingResult *models.CountingResult) {
 			if countingResult.TableNo == 0 {
 				panic("TableNo=0")
 			}
-			PublishBet(betRecord)
-			PublishAccountBalance(BetAccount)
+			NotifyBetRecord(betRecord)
+
 		}
 
 		countingResult.HasBeted = false
@@ -307,6 +361,7 @@ func processData() {
 					} else {
 						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 						SettleBet(currentCountingResult)
+						CalResultStatistic(currentCountingResult)
 					}
 					NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
@@ -370,17 +425,48 @@ func GetGameIDDisplayHand(gameIDDisplay string) string {
 	return result
 }
 
-//公佈預測結果(有沒有猜中)
+//發佈建議的結果(公布答案) 公佈預測結果(有沒有猜中)
 func NotifyGameResult(currentCountingResult *models.CountingResult) {
-	PublishCountingResult(currentCountingResult) //ws
+	PublishGameResult(currentCountingResult) //ws
 	//QQ
+	PublishGameResultToQQ(currentCountingResult, BetAccount)
 }
 
-//決定告知預測
+//決定告知預測 發佈建議
 func NotifySuggest(currentCountingResult *models.CountingResult) {
 	PublishCountingSuggest(currentCountingResult) //ws
 	//QQ
-	PublishChanceResultToQQ(currentCountingResult, BetAccount)
+	PublishCountingSuggestToQQ(currentCountingResult, BetAccount)
+}
+
+//發佈目前帳戶金額
+func NotifyCurrentBalance() {
+	PublishAccountBalance(BetAccount) //ws
+	//QQ
+
+}
+
+//發佈目前 下注/派彩 行為
+func NotifyBetRecord(betRecord models.BetRecord) {
+	PublishBet(betRecord) //ws
+	//QQ
+	if betRecord.Settled {
+		PublishSettleBetActionToQQ(betRecord)
+	} else {
+		PublishPlaceBetActionToQQ(betRecord)
+	}
+
+	NotifyCurrentBalance()
+}
+
+//發佈過去24小時的下注結果
+func NotifyCurrentBetStatistic() {
+	//
+	//PublishAccountBalance(BetAccount) //ws
+	//QQ
+
+	PublishBetStatisticToQQ(BetAccount)
+
 }
 
 //取得 BU001 TABLE 的 資料  tableCode := "0001005"

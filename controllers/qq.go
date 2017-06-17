@@ -11,13 +11,69 @@ import (
 	simplejson "github.com/bitly/go-simplejson"
 )
 
-//QQ發佈長龍通知
-func PublishChanceResultToQQ(_countingSuggest *models.CountingResult, _betAccount *models.SimBetAccount) {
+//QQ發佈長龍通知 決定告知預測 發佈建議
+func PublishCountingSuggestToQQ(_countingSuggest *models.CountingResult, _betAccount *models.SimBetAccount) {
 	//Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " (" + _countingSuggest.TrendName + ")"
 	SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
 	//SuggestionBetAmountMultipleStr := "$" + fmt.Sprint(_countingSuggest.SuggestionBetAmount/_countingSuggest.DefaultBetAmount)
 	SuggestionBetAmountStr := "$" + fmt.Sprint(_countingSuggest.SuggestionBetAmount)
-	Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " " + SuggestionBetAmountStr + " 帳戶餘額:" + fmt.Sprint(_betAccount.Balance)
+
+	Message := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建议买 " + SuggestionBetStr + " " + SuggestionBetAmountStr
+	sendMsgToQQGroup(Message)
+}
+
+//發佈建議的結果(公布答案) 公佈預測結果(有沒有猜中)
+func PublishGameResultToQQ(_countingResult *models.CountingResult, _betAccount *models.SimBetAccount) {
+	var guessResultStr string
+	if _countingResult.TieReturn {
+		guessResultStr = "平"
+
+	} else {
+
+		if _countingResult.GuessResult {
+			guessResultStr = "胜"
+		} else {
+			guessResultStr = "负"
+		}
+
+	}
+	if _countingResult.FirstHand {
+		guessResultStr = "第一局预测不记结果"
+	}
+
+	Message := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 开 " + models.TransBetTypeToStr(_countingResult.Result) + " 建议结果:" + guessResultStr
+
+	sendMsgToQQGroup(Message)
+}
+
+//發佈目前 下注 行為
+func PublishPlaceBetActionToQQ(betRecord models.BetRecord) {
+
+	Message := "第 " + fmt.Sprint(betRecord.TableNo) + " 桌 " + betRecord.GameIDDisplay + " 下注 " + betRecord.BetTypeStr + " $" + fmt.Sprint(betRecord.BetAmmount) + " 帐户余额:" + fmt.Sprint(betRecord.CurrentBalance)
+
+	sendMsgToQQGroup(Message)
+}
+
+//發佈目前 派彩 行為
+func PublishSettleBetActionToQQ(betRecord models.BetRecord) {
+
+	Message := "第 " + fmt.Sprint(betRecord.TableNo) + " 桌 " + betRecord.GameIDDisplay + " 派彩 " + betRecord.GameResultTypeStr + " $" + fmt.Sprint(betRecord.WinAmmount) + " 帐户余额:" + fmt.Sprint(betRecord.CurrentBalance)
+
+	sendMsgToQQGroup(Message)
+}
+
+//發佈下注統計
+func PublishBetStatisticToQQ(betAccount *models.SimBetAccount) {
+	betStatistic := betAccount.SubBetStatistic
+
+	Message := "由 " + fmt.Sprint(betStatistic.StartTime) + " ~ 目前为止" +
+		" \n下注次数:" + fmt.Sprint(betStatistic.BetCount) +
+		" \n下注总金额:" + fmt.Sprint(betStatistic.AccumulateBetAmount) +
+		" \n输赢总金额:" + fmt.Sprint(betStatistic.TotalWinAmount) +
+		" \n胜:" + fmt.Sprint(betStatistic.WinBetCount) +
+		" \n负:" + fmt.Sprint(betStatistic.LoseBetCount) +
+		" \n平:" + fmt.Sprint(betStatistic.TieBetCount)
+
 	sendMsgToQQGroup(Message)
 }
 

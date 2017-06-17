@@ -45,6 +45,7 @@ func main() {
 
 	// Register template functions.
 	beego.AddFuncMap("i18n", i18n.Tr)
-	controllers.InitBU()
 	beego.Run()
+	controllers.InitBU()
+
 }

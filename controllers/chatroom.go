@@ -51,7 +51,7 @@ func PublishAccountBalance(_betAccount *models.SimBetAccount) {
 }
 
 //發佈建議的結果(公布答案)
-func PublishCountingResult(_countingResult *models.CountingResult) {
+func PublishGameResult(_countingResult *models.CountingResult) {
 	countingResultCh <- _countingResult
 }
 

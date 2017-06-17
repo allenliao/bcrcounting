@@ -20,11 +20,12 @@ import (
 
 //模擬下注的 帳號
 type SimBetAccount struct {
-	Balance    float64
-	LoginTime  time.Time
-	LogoutTime time.Time
-
-	BetRecordList map[string]BetRecord
+	Balance           float64
+	LoginTime         time.Time
+	LogoutTime        time.Time
+	BetRecordList     map[string]BetRecord
+	TotalBetStatistic *BetStatistic
+	SubBetStatistic   *BetStatistic
 }
 
 type BetRecord struct {
@@ -40,4 +41,14 @@ type BetRecord struct {
 	WinAmmount        float64
 	Settled           bool
 	CurrentBalance    float64
+}
+
+type BetStatistic struct {
+	BetCount            uint8     //下注次數
+	WinBetCount         uint8     //贏的次數
+	LoseBetCount        uint8     //輸的次數
+	TieBetCount         uint8     //平的次數
+	AccumulateBetAmount float64   //累計下注金額
+	TotalWinAmount      float64   //累計贏得金額
+	StartTime           time.Time //開始統計時間
 }

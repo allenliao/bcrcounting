@@ -135,6 +135,7 @@ type CountingResult struct {
 	BeadRoadStr           string
 	ContinueLoseBetAmount float64 //累進下注金額
 	MaxLoseLimit          float64 //最大累進損失金額
+	WinAmmount            float64 //派彩金額
 }
 
 func (currentCountingResult *CountingResult) GetCountingResult() *CountingResult {
@@ -147,6 +148,7 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.SuggestionBet = Bcr_BETTYPE_NONE
 	currentCountingResult.SuggestionBetAmount = 100
 	currentCountingResult.DefaultBetAmount = 100
+	currentCountingResult.WinAmmount = 0
 	currentCountingResult.Result = Bcr_BETTYPE_NONE
 	currentCountingResult.GuessResult = false
 	currentCountingResult.TieReturn = false

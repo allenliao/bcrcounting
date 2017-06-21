@@ -82,13 +82,17 @@ func InitTableInfo() {
 }
 
 func StartProcess() {
+	go runBetStatisticTimeTick() //不起執行緒會佔住執行緒
 	go processData()
 	for _, tableInfo := range tableInfoMap {
 		go fetchTableData(tableInfo) //TODO: HARD CODE
 	}
 
+}
+
+func runBetStatisticTimeTick() {
 	ticker := time.NewTicker(time.Hour * 24)
-	//NotifyCurrentBetStatistic()
+	NotifyCurrentBetStatistic()
 	for _ = range ticker.C {
 		NotifyCurrentBetStatistic()
 		ResetBetStatistic()

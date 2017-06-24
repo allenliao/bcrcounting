@@ -67,7 +67,7 @@ func PublishSettleBetActionToQQ(betRecord models.BetRecord) {
 func PublishBetStatisticToQQ(betAccount *models.SimBetAccount) {
 	betStatistic := betAccount.SubBetStatistic
 
-	Message := "由 " + fmt.Sprint(betStatistic.StartTime) + " ~ 目前为止" +
+	Message := "(小結)由 " + fmt.Sprint(betStatistic.StartTime) + " ~ 目前为止" +
 		" \n下注次数:" + fmt.Sprint(betStatistic.BetCount) +
 		" \n下注总金额:" + fmt.Sprint(betStatistic.AccumulateBetAmount) +
 		" \n输赢总金额:" + fmt.Sprint(betStatistic.TotalWinAmount) +
@@ -76,6 +76,20 @@ func PublishBetStatisticToQQ(betAccount *models.SimBetAccount) {
 		" \n平:" + fmt.Sprint(betStatistic.TieBetCount)
 
 	sendMsgToQQGroup(Message, false)
+	goutils.Logger.Info("PublishBetStatisticToQQ Message:" + Message)
+
+	betStatistic = betAccount.TotalBetStatistic
+
+	Message = "(總結)由 " + fmt.Sprint(betStatistic.StartTime) + " ~ 目前为止" +
+		" \n下注次数:" + fmt.Sprint(betStatistic.BetCount) +
+		" \n下注总金额:" + fmt.Sprint(betStatistic.AccumulateBetAmount) +
+		" \n输赢总金额:" + fmt.Sprint(betStatistic.TotalWinAmount) +
+		" \n胜:" + fmt.Sprint(betStatistic.WinBetCount) +
+		" \n负:" + fmt.Sprint(betStatistic.LoseBetCount) +
+		" \n平:" + fmt.Sprint(betStatistic.TieBetCount)
+
+	sendMsgToQQGroup(Message, false)
+	goutils.Logger.Info("PublishBetStatisticToQQ Message:" + Message)
 }
 
 func sendMsgToQQGroup(Message string, goPublic bool) {

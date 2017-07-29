@@ -40,14 +40,17 @@ var BetTypeCount uint8 = 5
 func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]CountingResultInterface {
 	//cardCountingMethod := CountingResultMethod1{}//不符成本效益，放棄此算法
 	longtrendMethod := CountingResultMethod2{}
+	playerOverThenBankerMethod := CountingResultMethod3{}
 	//cardCountingMethod_addr := &cardCountingMethod//不符成本效益，放棄此算法
 	longtrendMethod_addr := &longtrendMethod
+	playerOverThenBankerMethod_addr := &playerOverThenBankerMethod
 	//methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
 
 	//注冊算法
 	currentCountingResultList := map[string]CountingResultInterface{
 		//"cardCounting": cardCountingMethod_addr,//不符成本效益，放棄此算法
-		"longtrend": longtrendMethod_addr}
+		"longtrend":            longtrendMethod_addr,
+		"playerOverThenBanker": playerOverThenBankerMethod_addr}
 
 	for _, methodObj_addr := range currentCountingResultList {
 		//methodObj.InitBaseField(BUCode, tableNo)
@@ -158,22 +161,70 @@ func (currentCountingResult *CountingResult) InitBaseField(BUCode string, tableN
 	currentCountingResult.NextBetDubleBet = false
 	currentCountingResult.GotCard = false
 	currentCountingResult.GotResult = false
-
-}
-
-//是否保留上一局的 建議，不理會這一局的 建議
-func (currentCountingResult *CountingResult) IsKeepPreviousSuggestion() bool {
-	return false
+	currentCountingResult.MaxLoseLimit = 999999999
 
 }
 
 //檢查這一局要不要下 順便和 isNeedPlaceNextBet 配合做初始化動作 呼叫時間點在下注狀態時
 func (currentCountingResult *CountingResult) IsNeedPlaceBet(handCount int, balance float64) bool {
-	return false
+	if currentCountingResult.ContinueLoseBetAmount >= currentCountingResult.MaxLoseLimit {
+		//若輸過底線了 就停止追擊
+		goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " 若輸過底線了 就停止追擊 ContinueLoseBetAmount:" + fmt.Sprint(currentCountingResult.ContinueLoseBetAmount) + " MaxLoseLimit:" + fmt.Sprint(currentCountingResult.MaxLoseLimit))
+		currentCountingResult.HasBeted = false
+		return false
+	}
+
+	//若已經是第60局 又不是在追倍投 就建議不要下注了
+	currentCountingResult.HasBeted = !(handCount >= 60 &&
+		!currentCountingResult.NextBetDubleBet) &&
+		balance > currentCountingResult.SuggestionBetAmount
+	if !currentCountingResult.HasBeted {
+		goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
+	}
+	return currentCountingResult.HasBeted
 }
 
 //決定這下一局要不要下 順便和 isNeedPlaceBet 配合做初始化動作 呼叫時間點在取得到RESULT時
 func (currentCountingResult *CountingResult) IsNeedPlaceNextBet() {
+	//若沒猜中且有下注
+	if currentCountingResult.HasBeted && !currentCountingResult.GuessResult {
+		if currentCountingResult.Result != Bcr_BETTYPE_TIE {
+			currentCountingResult.ContinueLoseBetAmount += currentCountingResult.SuggestionBetAmount //在這裡記錄
+		}
+	} else {
+		currentCountingResult.ContinueLoseBetAmount = 0
+	}
+
+	//決定下一注要不要倍投
+	//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
+	if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
+		if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
+			//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
+			currentCountingResult.NextBetDubleBet = true
+
+		} else {
+			currentCountingResult.StopDubleBet()
+		}
+	} else {
+		currentCountingResult.StopDubleBet()
+	}
+
+}
+
+//是否維持注上一局的 下注，不理會算牌結果
+func (currentCountingResult *CountingResult) IsKeepPreviousSuggestion() bool {
+	result := false
+
+	if currentCountingResult.NextBetDubleBet {
+		if currentCountingResult.Result == Bcr_BETTYPE_TIE {
+			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount //開和維持原投注
+		} else {
+			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount * 2
+		}
+
+		result = true
+	}
+	return result
 }
 
 func (currentCountingResult *CountingResult) InitCustomField(BUCode string, tableNo uint8) {
@@ -327,7 +378,7 @@ func hitHouseEdge(betSuggestion *BetSuggestion) bool {
 //長龍
 type CountingResultMethod2 struct {
 	CountingResult
-	RoadPatternInfoList [4]RoadPatternInfo
+	RoadPatternInfoList [6]RoadPatternInfo
 }
 
 type RoadPatternInfo struct {
@@ -340,77 +391,33 @@ type RoadPatternInfo struct {
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.MethodID = "M2"
-	currentCountingResult.MethodName = "連6斬龍 倍投 3100止損 休一注後重追" //上次下注金額>=1600 就放棄屠龍認賠3100
+	currentCountingResult.MethodName = "連6長閒追閒, 連四2間跳斷閒或加莊 加回長莊斬龍"
+	//連6長閒追閒, 連四2間跳斷閒或加莊 加回長莊斬龍>>下閒的機會多
+	//連6長閒斬龍, 連六2間跳斷閒或加莊 >>長閒斷閒一下就死了 ，下次改追閒
+	//連6長閒斬龍, 連六2間跳斷閒或加莊
+	//連6斬龍 倍投 3100止損 休一注後重追 >>上次下注金額>=1600 就放棄屠龍認賠3100 報酬差
 	//連7斬龍 >>1個禮拜24小時不間斷 失敗過一次連18龍 平均一天24H 賺2500~3000
 	//連8斬龍 >>2天24小時不間斷 失敗過一次兩桌同時連15龍以上，錢不夠作倍投
+
 	currentCountingResult.DubleBet = true
 	currentCountingResult.DubleBetWhenWin = false //輸了倍投
 	currentCountingResult.MaxLoseLimit = 3100
+
 	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 1, PatternName: "長莊"}
-	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 0, PatternName: "長閒"}
-	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
-	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
+	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 1, PatternName: "長閒"}
+	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "00110011", SuggestionBetType: 0, PatternName: "莊閒二間長跳"}
+	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "11001100", SuggestionBetType: 0, PatternName: "閒莊二間長跳"}
+	currentCountingResult.RoadPatternInfoList[4] = RoadPatternInfo{Pattern: "010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
+	currentCountingResult.RoadPatternInfoList[5] = RoadPatternInfo{Pattern: "101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
 
-}
+	/*
+		//連6斬龍 倍投 3100止損 休一注後重追
+		currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 1, PatternName: "長莊"}
+		currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 0, PatternName: "長閒"}
+		currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
+		currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
+	*/
 
-//檢查這一局要不要下 順便和 isNeedPlaceNextBet 配合做初始化動作 呼叫時間點在下注狀態時
-func (currentCountingResult *CountingResultMethod2) IsNeedPlaceBet(handCount int, balance float64) bool {
-	if currentCountingResult.ContinueLoseBetAmount >= currentCountingResult.MaxLoseLimit {
-		//若輸過底線了 就停止追擊
-		goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " 若輸過底線了 就停止追擊 ContinueLoseBetAmount:" + fmt.Sprint(currentCountingResult.ContinueLoseBetAmount) + " MaxLoseLimit:" + fmt.Sprint(currentCountingResult.MaxLoseLimit))
-		currentCountingResult.HasBeted = false
-		return false
-	}
-
-	//若已經是第60局 又不是在追倍投 就建議不要下注了
-	currentCountingResult.HasBeted = !(handCount >= 60 &&
-		!currentCountingResult.NextBetDubleBet) &&
-		balance > currentCountingResult.SuggestionBetAmount
-	if !currentCountingResult.HasBeted {
-		goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " 若已經是第60局 又不是在追倍投 就建議不要下注了 handCount:" + fmt.Sprint(handCount) + " NextBetDubleBet:" + fmt.Sprint(currentCountingResult.NextBetDubleBet))
-	}
-	return currentCountingResult.HasBeted
-}
-
-//決定這下一局要不要下 順便和 isNeedPlaceBet 配合做初始化動作 呼叫時間點在取得到RESULT時
-func (currentCountingResult *CountingResultMethod2) IsNeedPlaceNextBet() {
-	//若沒猜中且有下注
-	if currentCountingResult.HasBeted && !currentCountingResult.GuessResult {
-		currentCountingResult.ContinueLoseBetAmount += currentCountingResult.SuggestionBetAmount //在這裡記錄
-	} else {
-		currentCountingResult.ContinueLoseBetAmount = 0
-	}
-
-	//決定下一注要不要倍投
-	//該方法要不要倍投?&&第一局結果不要倍投&&上一局有下注
-	if currentCountingResult.DubleBet && !currentCountingResult.FirstHand && currentCountingResult.HasBeted {
-		if currentCountingResult.DubleBetWhenWin == currentCountingResult.GuessResult {
-			//贏了倍投//輸了倍投? 開和維持原投注 下注金額控制在 Counting()
-			currentCountingResult.NextBetDubleBet = true
-
-		} else {
-			currentCountingResult.StopDubleBet()
-		}
-	} else {
-		currentCountingResult.StopDubleBet()
-	}
-
-}
-
-//是否維持注上一局的 下注，不理會算牌結果
-func (currentCountingResult *CountingResultMethod2) IsKeepPreviousSuggestion() bool {
-	result := false
-
-	if currentCountingResult.NextBetDubleBet {
-		if currentCountingResult.Result == Bcr_BETTYPE_TIE {
-			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount //開和維持原投注
-		} else {
-			currentCountingResult.SuggestionBetAmount = currentCountingResult.SuggestionBetAmount * 2
-		}
-
-		result = true
-	}
-	return result
 }
 
 //用字串搜尋的 方法
@@ -428,6 +435,72 @@ func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, be
 			//SuggestionBetAmount
 			result = true
 			break
+		}
+
+	}
+
+	return result
+}
+
+//閒勝-莊勝>?要下莊
+type CountingResultMethod3 struct {
+	CountingResult
+	PlayerBankerCountOffset int
+}
+
+func (currentCountingResult *CountingResultMethod3) InitCustomField() {
+	currentCountingResult.MethodID = "M3"
+	currentCountingResult.MethodName = "閒莊勝差12局"
+	currentCountingResult.PlayerBankerCountOffset = 12
+	currentCountingResult.DubleBet = true
+	currentCountingResult.DubleBetWhenWin = false //輸了倍投
+	currentCountingResult.MaxLoseLimit = 3100
+
+}
+
+func (currentCountingResult *CountingResultMethod3) Counting(cardList [6]int, beadRoadStr string) bool {
+
+	playerCount := strings.Count(beadRoadStr, "1")
+	bankerCount := strings.Count(beadRoadStr, "0")
+	result := (playerCount - bankerCount) >= currentCountingResult.PlayerBankerCountOffset
+	if result {
+		currentCountingResult.SuggestionBet = Bcr_BETTYPE_BANKER ////建議下一局下莊
+		currentCountingResult.TrendName = currentCountingResult.MethodName + "下莊"
+		return result
+	}
+	result = (bankerCount - playerCount) >= currentCountingResult.PlayerBankerCountOffset
+	if result {
+		currentCountingResult.SuggestionBet = Bcr_BETTYPE_PLAYER ////建議下一局下閒
+		currentCountingResult.TrendName = currentCountingResult.MethodName + "下閒"
+		return result
+	}
+	return false
+}
+
+//62局以上沒有出現和局 試和
+type CountingResultMethod4 struct {
+	CountingResult
+	NonTieCount int
+}
+
+func (currentCountingResult *CountingResultMethod4) InitCustomField() {
+	currentCountingResult.MethodID = "M4"
+	currentCountingResult.MethodName = "62局以上沒有出現和局"
+	currentCountingResult.NonTieCount = 62
+	currentCountingResult.DubleBet = false
+	currentCountingResult.DubleBetWhenWin = false //不倍投 這方法會自己追注
+	currentCountingResult.MaxLoseLimit = 1500
+
+}
+
+func (currentCountingResult *CountingResultMethod4) Counting(cardList [6]int, beadRoadStr string) bool {
+	result := false
+	handCount := len(beadRoadStr)
+	if handCount >= currentCountingResult.NonTieCount {
+		result = (strings.Count(beadRoadStr, "2") <= 0)
+		if result {
+			currentCountingResult.SuggestionBet = Bcr_BETTYPE_TIE ////建議下一局下和
+			currentCountingResult.TrendName = currentCountingResult.MethodName + "下和"
 		}
 
 	}

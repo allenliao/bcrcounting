@@ -71,7 +71,7 @@ func InitTableInfo() {
 	Odds = make(map[uint8]float64) //每一桌都一樣
 	Odds[models.Bcr_BETTYPE_BANKER] = 1.95
 	Odds[models.Bcr_BETTYPE_PLAYER] = 2
-	Odds[models.Bcr_BETTYPE_TIE] = 1
+	Odds[models.Bcr_BETTYPE_TIE] = 8
 	tableCodeList := []string{"0001001", "0001002", "0001003", "0001004", "0001005", "0001006", "0001007", "0001008", "0001009", "0001010", "0001011", "0001012", "0001013", "0001014"}
 	tableNoList := []uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	for idx, tableCode := range tableCodeList {
@@ -82,13 +82,17 @@ func InitTableInfo() {
 }
 
 func StartProcess() {
+	go runBetStatisticTimeTick() //不起執行緒會佔住執行緒
 	go processData()
 	for _, tableInfo := range tableInfoMap {
 		go fetchTableData(tableInfo) //TODO: HARD CODE
 	}
 
-	ticker := time.NewTicker(time.Hour * 24)
-	//NotifyCurrentBetStatistic()
+}
+
+func runBetStatisticTimeTick() {
+	ticker := time.NewTicker(time.Hour * 4) //每四小時統計一次
+	NotifyCurrentBetStatistic()
 	for _ = range ticker.C {
 		NotifyCurrentBetStatistic()
 		ResetBetStatistic()
@@ -142,27 +146,26 @@ func CalPlaceBetStatistic(betAmount float64) {
 }
 
 func CalResultStatistic(countingResult *models.CountingResult) {
-	if countingResult.HasBeted {
-		if countingResult.Result == models.Bcr_BETTYPE_TIE {
-			BetAccount.SubBetStatistic.TieBetCount++
+	if countingResult.Result == models.Bcr_BETTYPE_TIE {
+		BetAccount.SubBetStatistic.TieBetCount++
+		BetAccount.SubBetStatistic.TotalWinAmount += countingResult.WinAmmount
+
+		BetAccount.TotalBetStatistic.TieBetCount++
+		BetAccount.TotalBetStatistic.TotalWinAmount += countingResult.WinAmmount
+	} else {
+		if countingResult.GuessResult {
+			BetAccount.SubBetStatistic.WinBetCount++
 			BetAccount.SubBetStatistic.TotalWinAmount += countingResult.WinAmmount
 
-			BetAccount.TotalBetStatistic.TieBetCount++
+			BetAccount.TotalBetStatistic.WinBetCount++
 			BetAccount.TotalBetStatistic.TotalWinAmount += countingResult.WinAmmount
 		} else {
-			if countingResult.GuessResult {
-				BetAccount.SubBetStatistic.WinBetCount++
-				BetAccount.SubBetStatistic.TotalWinAmount += countingResult.WinAmmount
+			BetAccount.SubBetStatistic.LoseBetCount++
 
-				BetAccount.TotalBetStatistic.WinBetCount++
-				BetAccount.TotalBetStatistic.TotalWinAmount += countingResult.WinAmmount
-			} else {
-				BetAccount.SubBetStatistic.LoseBetCount++
-
-				BetAccount.TotalBetStatistic.LoseBetCount++
-			}
+			BetAccount.TotalBetStatistic.LoseBetCount++
 		}
 	}
+
 }
 
 func ResetBetStatistic() {
@@ -212,8 +215,12 @@ func SettleBet(countingResult *models.CountingResult) {
 		betRecord := BetAccount.BetRecordList[countingResult.GameIDDisplay]
 		betRecord.GameResultType = countingResult.Result
 		betRecord.GameResultTypeStr = models.TransBetTypeToStr(betRecord.GameResultType)
+		//贏錢
 		if betRecord.BetType == countingResult.Result || countingResult.Result == models.Bcr_BETTYPE_TIE {
 			odd := Odds[countingResult.Result]
+			if countingResult.Result == models.Bcr_BETTYPE_TIE && betRecord.BetType != countingResult.Result {
+				odd = 1 //下莊閒 開和要退錢
+			}
 			betRecord.Settled = true
 			betRecord.WinAmmount = odd * betRecord.BetAmmount
 			countingResult.WinAmmount = betRecord.WinAmmount
@@ -228,6 +235,8 @@ func SettleBet(countingResult *models.CountingResult) {
 			NotifyBetRecord(betRecord)
 
 		}
+
+		CalResultStatistic(countingResult)
 
 		countingResult.HasBeted = false
 	}
@@ -361,7 +370,7 @@ func processData() {
 					} else {
 						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 						SettleBet(currentCountingResult)
-						CalResultStatistic(currentCountingResult)
+
 					}
 					NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 

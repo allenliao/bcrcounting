@@ -365,12 +365,22 @@ func processData() {
 						}
 
 					}
+					if currentCountingResult.GuessResult {
+						models.StatisticTrendMethodAddWin(currentCountingResult.TrendMethodID)
+					}
+					if currentCountingResult.TieReturn || currentCountingResult.FirstHand {
+						if currentCountingResult.TieReturn {
+							goutils.Logger.Info("tableCode:" + tableCode + " 統計預測結果  和局 統計不算 total-1")
+						} else {
+							goutils.Logger.Info("tableCode:" + tableCode + " 統計預測結果  第一局 統計不算 total-1")
+						}
+						models.StatisticTrendMethodTotalReduce(currentCountingResult.TrendMethodID)
+					}
 					if currentCountingResult.FirstHand {
 						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  第一局 預測不算")
 					} else {
 						goutils.Logger.Info("tableCode:" + tableCode + " 公佈預測結果  currentCountingResult.Result:" + models.TransBetTypeToStr(currentCountingResult.Result) + " currentCountingResult.GuessResult:" + fmt.Sprint(currentCountingResult.GuessResult))
 						SettleBet(currentCountingResult)
-
 					}
 					NotifyGameResult(currentCountingResult) //公佈預測結果(有沒有猜中)
 
@@ -400,7 +410,7 @@ func processData() {
 							goutils.Logger.Info("tableCode:" + tableCode + " 珠盤路:" + currentCountingResult.BeadRoadStr)
 
 						}
-						_isKeepPreviousSuggestion := currentCountingResultInterface.IsKeepPreviousSuggestion()
+						_isKeepPreviousSuggestion := currentCountingResultInterface.IsKeepPreviousSuggestion() //決定要不要追
 						//餵牌 餵路紙 做計算
 						gotResult := currentCountingResultInterface.Counting(currentCountingResult.CardList, currentCountingResult.BeadRoadStr)
 						if _isKeepPreviousSuggestion {
@@ -408,6 +418,10 @@ func processData() {
 						}
 						if gotResult {
 							//有預測結果了
+
+							currentCountingResult.TrendMethodWinRate = models.GetStatisticTrendMethodWinRate(currentCountingResult.TrendMethodID)
+							models.StatisticTrendMethodAddTotal(currentCountingResult.TrendMethodID)
+
 							goutils.Logger.Info("tableCode:" + tableCode + " 有預測結果了 決定告知預測")
 							NotifySuggest(currentCountingResult) //決定告知預測
 						} else {

@@ -40,17 +40,17 @@ var BetTypeCount uint8 = 5
 func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]CountingResultInterface {
 	//cardCountingMethod := CountingResultMethod1{}//不符成本效益，放棄此算法
 	longtrendMethod := CountingResultMethod2{}
-	playerOverThenBankerMethod := CountingResultMethod3{}
+	//playerOverThenBankerMethod := CountingResultMethod3{}//輸率太高，放棄此算法
 	//cardCountingMethod_addr := &cardCountingMethod//不符成本效益，放棄此算法
 	longtrendMethod_addr := &longtrendMethod
-	playerOverThenBankerMethod_addr := &playerOverThenBankerMethod
+	//playerOverThenBankerMethod_addr := &playerOverThenBankerMethod//輸率太高，放棄此算法
 	//methodObj_addr.InitBaseField(BUCode, tableNo) //沒有改變自身的屬性值 要想辦法為Addr進去不然就是這樣
 
 	//注冊算法
 	currentCountingResultList := map[string]CountingResultInterface{
 		//"cardCounting": cardCountingMethod_addr,//不符成本效益，放棄此算法
-		"longtrend":            longtrendMethod_addr,
-		"playerOverThenBanker": playerOverThenBankerMethod_addr}
+		"longtrend": longtrendMethod_addr}
+	//"playerOverThenBanker": playerOverThenBankerMethod_addr}//輸率太高，放棄此算法
 
 	for _, methodObj_addr := range currentCountingResultList {
 		//methodObj.InitBaseField(BUCode, tableNo)
@@ -62,6 +62,40 @@ func CreateCurrentCountingResultList(BUCode string, tableNo uint8) map[string]Co
 
 	return currentCountingResultList
 
+}
+
+var trendMethodStatisticInfoMap map[string]*TrendMethodStatisticInfo = make(map[string]*TrendMethodStatisticInfo)
+
+type TrendMethodStatisticInfo struct {
+	totalCount int
+	winCount   int
+}
+
+//統計勝率
+func StatisticTrendMethodAddTotal(trendMethodID string) {
+	goutils.Logger.Info("StatisticTrendMethodAddTotal totalCount:" + fmt.Sprint(trendMethodStatisticInfoMap[trendMethodID].totalCount))
+	trendMethodStatisticInfoMap[trendMethodID].totalCount++
+}
+
+func StatisticTrendMethodAddWin(trendMethodID string) {
+	goutils.Logger.Info("StatisticTrendMethodAddWin winCount:" + fmt.Sprint(trendMethodStatisticInfoMap[trendMethodID].winCount))
+	trendMethodStatisticInfoMap[trendMethodID].winCount++
+}
+
+//最後一局預測時不記錄 和局不記錄
+func StatisticTrendMethodTotalReduce(trendMethodID string) {
+	goutils.Logger.Info("StatisticTrendMethodTotalReduce totalCount:" + fmt.Sprint(trendMethodStatisticInfoMap[trendMethodID].totalCount))
+	trendMethodStatisticInfoMap[trendMethodID].totalCount--
+}
+
+//TrendMethodWinRate
+func GetStatisticTrendMethodWinRate(trendMethodID string) float64 {
+	if trendMethodStatisticInfoMap[trendMethodID] == nil {
+		trendMethodStatisticInfoMap[trendMethodID] = &TrendMethodStatisticInfo{totalCount: 1, winCount: 1}
+	}
+	result := float64(trendMethodStatisticInfoMap[trendMethodID].winCount) / float64(trendMethodStatisticInfoMap[trendMethodID].totalCount)
+	goutils.Logger.Info("GetStatisticTrendMethodWinRate trendMethodID:" + trendMethodID + " totalCount:" + fmt.Sprint(trendMethodStatisticInfoMap[trendMethodID].totalCount) + " winCount:" + fmt.Sprint(trendMethodStatisticInfoMap[trendMethodID].winCount) + " result:" + fmt.Sprint(result))
+	return result
 }
 
 //排序用的
@@ -121,6 +155,8 @@ type CountingResult struct {
 	SuggestionBetAmount   float64 //建議下一局下注金額
 	DefaultBetAmount      float64 //預設下注金額
 	TrendName             string  //趨勢名稱
+	TrendMethodID         string  //趨勢方法ID>>統計機率用的
+	TrendMethodWinRate    float64 //趨勢方法ID勝率
 	Result                uint8   //發牌結果
 	GuessResult           bool    //猜測的結果
 	TieReturn             bool    //開和 若壓莊閒 須返水
@@ -386,13 +422,15 @@ type RoadPatternInfo struct {
 	//HitCount      uint8 //連續出現幾次
 	SuggestionBetType uint8
 	PatternName       string
+	PatternID         string
 }
 
 //之後可以透過呼叫這個方法餵客製化參數進來
 func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.MethodID = "M2"
 	currentCountingResult.MethodName = "連6長閒追閒, 連四2間跳斷閒或加莊 加回長莊斬龍"
-	//連6長閒追閒, 連四2間跳斷閒或加莊 加回長莊斬龍>>下閒的機會多
+	//連6長莊閒斬龍, 連四2間跳斷閒或加莊，長跳由3連跳改回6連跳，機會少死比較慢
+	//連6長閒追閒, 連四2間跳斷閒或加莊 加回長莊斬龍>>下閒的機會多，死的快
 	//連6長閒斬龍, 連六2間跳斷閒或加莊 >>長閒斷閒一下就死了 ，下次改追閒
 	//連6長閒斬龍, 連六2間跳斷閒或加莊
 	//連6斬龍 倍投 3100止損 休一注後重追 >>上次下注金額>=1600 就放棄屠龍認賠3100 報酬差
@@ -403,12 +441,12 @@ func (currentCountingResult *CountingResultMethod2) InitCustomField() {
 	currentCountingResult.DubleBetWhenWin = false //輸了倍投
 	currentCountingResult.MaxLoseLimit = 3100
 
-	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 1, PatternName: "長莊"}
-	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 1, PatternName: "長閒"}
-	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "00110011", SuggestionBetType: 0, PatternName: "莊閒二間長跳"}
-	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "11001100", SuggestionBetType: 0, PatternName: "閒莊二間長跳"}
-	currentCountingResult.RoadPatternInfoList[4] = RoadPatternInfo{Pattern: "010101", SuggestionBetType: 0, PatternName: "莊閒長跳"}
-	currentCountingResult.RoadPatternInfoList[5] = RoadPatternInfo{Pattern: "101010", SuggestionBetType: 1, PatternName: "閒莊長跳"}
+	currentCountingResult.RoadPatternInfoList[0] = RoadPatternInfo{Pattern: "000000", SuggestionBetType: 1, PatternName: "長莊", PatternID: currentCountingResult.MethodID + "_1"}
+	currentCountingResult.RoadPatternInfoList[1] = RoadPatternInfo{Pattern: "111111", SuggestionBetType: 0, PatternName: "長閒", PatternID: currentCountingResult.MethodID + "_2"}
+	currentCountingResult.RoadPatternInfoList[2] = RoadPatternInfo{Pattern: "00110011", SuggestionBetType: 0, PatternName: "莊閒二間長跳", PatternID: currentCountingResult.MethodID + "_3"}
+	currentCountingResult.RoadPatternInfoList[3] = RoadPatternInfo{Pattern: "11001100", SuggestionBetType: 0, PatternName: "閒莊二間長跳", PatternID: currentCountingResult.MethodID + "_4"}
+	currentCountingResult.RoadPatternInfoList[4] = RoadPatternInfo{Pattern: "0101010101", SuggestionBetType: 0, PatternName: "莊閒長跳", PatternID: currentCountingResult.MethodID + "_5"}
+	currentCountingResult.RoadPatternInfoList[5] = RoadPatternInfo{Pattern: "1010101010", SuggestionBetType: 1, PatternName: "閒莊長跳", PatternID: currentCountingResult.MethodID + "_6"}
 
 	/*
 		//連6斬龍 倍投 3100止損 休一注後重追
@@ -431,6 +469,7 @@ func (currentCountingResult *CountingResultMethod2) Counting(cardList [6]int, be
 			goutils.Logger.Info("TableNo:" + fmt.Sprint(currentCountingResult.TableNo) + " Pattern:" + Pattern + " endIdx:" + fmt.Sprint(endIdx) + " pIdx:" + fmt.Sprint(pIdx) + " roadPatternInfo.SuggestionBetType:" + TransBetTypeToStr(roadPatternInfo.SuggestionBetType))
 			currentCountingResult.SuggestionBet = roadPatternInfo.SuggestionBetType
 			currentCountingResult.TrendName = roadPatternInfo.PatternName
+			currentCountingResult.TrendMethodID = roadPatternInfo.PatternID
 			//TransBetTypeToStr(roadPatternInfo.SuggestionBetType) //建議下一局買甚麼
 			//SuggestionBetAmount
 			result = true
@@ -448,10 +487,10 @@ type CountingResultMethod3 struct {
 	PlayerBankerCountOffset int
 }
 
-func (currentCountingResult *CountingResultMethod3) InitCustomField() {
+func (currentCountingResult *CountingResultMethod3) InitCustomField() { //輸率太高，不適合倍投
 	currentCountingResult.MethodID = "M3"
-	currentCountingResult.MethodName = "閒莊勝差12局"
-	currentCountingResult.PlayerBankerCountOffset = 12
+	currentCountingResult.MethodName = "閒莊勝差15局"
+	currentCountingResult.PlayerBankerCountOffset = 15
 	currentCountingResult.DubleBet = true
 	currentCountingResult.DubleBetWhenWin = false //輸了倍投
 	currentCountingResult.MaxLoseLimit = 3100
@@ -466,12 +505,14 @@ func (currentCountingResult *CountingResultMethod3) Counting(cardList [6]int, be
 	if result {
 		currentCountingResult.SuggestionBet = Bcr_BETTYPE_BANKER ////建議下一局下莊
 		currentCountingResult.TrendName = currentCountingResult.MethodName + "下莊"
+		currentCountingResult.TrendMethodID = currentCountingResult.MethodID + "_0"
 		return result
 	}
 	result = (bankerCount - playerCount) >= currentCountingResult.PlayerBankerCountOffset
 	if result {
 		currentCountingResult.SuggestionBet = Bcr_BETTYPE_PLAYER ////建議下一局下閒
 		currentCountingResult.TrendName = currentCountingResult.MethodName + "下閒"
+		currentCountingResult.TrendMethodID = currentCountingResult.MethodID + "_1"
 		return result
 	}
 	return false
@@ -501,6 +542,7 @@ func (currentCountingResult *CountingResultMethod4) Counting(cardList [6]int, be
 		if result {
 			currentCountingResult.SuggestionBet = Bcr_BETTYPE_TIE ////建議下一局下和
 			currentCountingResult.TrendName = currentCountingResult.MethodName + "下和"
+			currentCountingResult.TrendMethodID = currentCountingResult.MethodID + "_1"
 		}
 
 	}

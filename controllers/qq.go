@@ -93,7 +93,7 @@ func PublishBetStatisticToQQ(betAccount *models.SimBetAccount) {
 }
 
 func sendMsgToQQGroup(Message string, goPublic bool) {
-	host := "127.0.0.1"
+	host := "qq.bill.com"
 	port := "1236"
 	RobotQQ := "3378333039"
 	Key := "a123456b"

@@ -18,6 +18,7 @@ import (
 	"container/list"
 	"encoding/json"
 	"goutils"
+	"math"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -107,34 +108,51 @@ func chatroom() {
 			//提供建議
 			SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
 			if SuggestionBetStr != "" {
-				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " (" + _countingSuggest.TrendName + ")"
-				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
-				goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
+
+				TrendMethodWinRate := math.Abs(math.Ceil(_countingSuggest.TrendMethodWinRate*10000)) / 100
+				msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " (" + _countingSuggest.TrendName + ") TrendMethodWinRate:" + fmt.Sprint(TrendMethodWinRate)
+				goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議 msg:" + msg)
+				_countingSuggestStr, err := json.Marshal(_countingSuggest)
+				goutils.CheckErr(err)
+				publish <- newEvent(models.EVENT_SUGGESTION, "建議:", string(_countingSuggestStr))
 			}
+			/*
+				SuggestionBetStr := models.TransBetTypeToStr(_countingSuggest.SuggestionBet)
+				if SuggestionBetStr != "" {
+					msg := "第 " + fmt.Sprint(_countingSuggest.TableNo) + " 桌 " + _countingSuggest.GameIDDisplay + " 下一局建議買 " + SuggestionBetStr + " (" + _countingSuggest.TrendName + ")"
+					publish <- newEvent(models.EVENT_SUGGESTION, "建議:", msg)
+					goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingSuggest.TableNo) + " *真* 提供建議")
+				}
+			*/
 
 		case _countingResult := <-countingResultCh:
 			//報告預測結果
 			//該局有提供建議時才會填這一局的 Result
-			var guessResultStr string
-			if _countingResult.TieReturn {
-				guessResultStr = "平"
+			_countingResultStr, err := json.Marshal(_countingResult)
+			goutils.CheckErr(err)
+			publish <- newEvent(models.EVENT_RESULT, "結果:", string(_countingResultStr))
+			/*
+				var guessResultStr string
+				if _countingResult.TieReturn {
+					guessResultStr = "平"
 
-			} else {
-
-				if _countingResult.GuessResult {
-					guessResultStr = "勝"
 				} else {
-					guessResultStr = "負"
+
+					if _countingResult.GuessResult {
+						guessResultStr = "勝"
+					} else {
+						guessResultStr = "負"
+					}
+
+				}
+				if _countingResult.FirstHand {
+					guessResultStr = "第一局預測不記結果"
 				}
 
-			}
-			if _countingResult.FirstHand {
-				guessResultStr = "第一局預測不記結果"
-			}
+				msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + models.TransBetTypeToStr(_countingResult.Result) + " 建議結果:" + guessResultStr
 
-			msg := "第 " + fmt.Sprint(_countingResult.TableNo) + " 桌 " + _countingResult.GameIDDisplay + " 開 " + models.TransBetTypeToStr(_countingResult.Result) + " 建議結果:" + guessResultStr
-
-			publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
+				publish <- newEvent(models.EVENT_RESULT, "結果:", msg)
+			*/
 			goutils.Logger.Info("TableNo:" + fmt.Sprint(_countingResult.TableNo) + " *真* 公佈預測結果")
 		case sub := <-subscribe:
 			if !isUserExist(subscribers, sub.Name) {
